@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -382,14 +383,24 @@ func resolveModel(tag string) (string, models.ModelDefinition, *models.Manifest,
 
 // locateEngineBinary checks local development build paths or ~/.bitrun/bin
 func locateEngineBinary(name string) string {
-	candidates := []string{
-		filepath.Join(models.GetBinDir(), name),
-		filepath.Join(".", "bin", name),
-		filepath.Join("upstream", "bitnet", "build", "bin", name),
+	exts := []string{""}
+	if runtime.GOOS == "windows" {
+		exts = []string{".exe", ""}
 	}
-	for _, path := range candidates {
-		if _, err := os.Stat(path); err == nil {
-			return path
+
+	for _, ext := range exts {
+		binName := name + ext
+		candidates := []string{
+			filepath.Join(models.GetBinDir(), binName),
+			filepath.Join(".", "bin", binName),
+			filepath.Join("upstream", "bitnet", "build", "bin", binName),
+			filepath.Join("upstream", "bitnet", "build", "bin", "Release", binName),
+			filepath.Join("upstream", "bitnet", "build", "bin", "Debug", binName),
+		}
+		for _, path := range candidates {
+			if _, err := os.Stat(path); err == nil {
+				return path
+			}
 		}
 	}
 	return ""

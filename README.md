@@ -32,15 +32,20 @@ bitrun serve bitnet-2b
 
 ---
 
-## Performance Benchmark
+## Performance Benchmarks
 
-Tested live on Apple Silicon (M4 Pro CPU, pure CPU inference with `-ngl 0`):
-
+### 1. Apple Silicon (M4 Pro CPU, 12 Cores, Pure CPU SIMD `-ngl 0`)
 | Model | Size | Prompt Speed | Generation Speed | Memory (RAM) | GPU Utilization |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Falcon3 1B Instruct** (`falcon3-1b`) | **1.30 GB** | **137.5 t/s** | **98.6 t/s** | **~1.9 GB** | **0% (Pure CPU SIMD)** |
 | **BitNet b1.58 2.4B** (`bitnet-2b`) | **1.13 GB** | **60.1 t/s** | **39.8 t/s** | **~1.8 GB** | **0% (Pure CPU SIMD)** |
 | **BitNet 70M** (`bitnet-70m`) | **79 MB** | **8,758 t/s** | **1,355 t/s** | **< 150 MB** | **0% (Pure CPU SIMD)** |
+
+### 2. Windows x86_64 (Intel Core i5-12600K CPU, 16 Threads, AVX2 SIMD)
+| Model | Size | Prompt Speed | Generation Speed | Memory (RAM) | GPU Utilization |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Falcon3 1B Instruct** (`falcon3-1b`) | **1.30 GB** | **93–210 t/s** | **40–45 t/s** | **~1.9 GB** | **0% (Pure CPU AVX2)** |
+| **BitNet 70M** (`bitnet-70m`) | **79 MB** | **2,419 t/s** | **492 t/s** | **< 150 MB** | **0% (Pure CPU AVX2)** |
 
 ---
 
@@ -48,8 +53,14 @@ Tested live on Apple Silicon (M4 Pro CPU, pure CPU inference with `-ngl 0`):
 
 ### 1. One-Line Installation
 
+**macOS (Apple Silicon)**:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/IshekKhal/bitrun/main/install.sh | sh
+```
+
+**Windows (PowerShell)**:
+```powershell
+irm https://raw.githubusercontent.com/IshekKhal/bitrun/main/install.ps1 | iex
 ```
 
 ### 2. Available Commands
@@ -144,6 +155,16 @@ BitRun uses a **decoupled supervisor-engine design**:
 
 ---
 
+## Acknowledgements & Open Source Credits
+
+BitRun stands on the shoulders of giants:
+* **[llama.cpp](https://github.com/ggerganov/llama.cpp)** by Georgi Gerganov and the open-source community (MIT License) — The pioneering CPU inference architecture and GGUF specification.
+* **[BitNet.cpp](https://github.com/microsoft/BitNet)** by Microsoft Research (MIT License) — Groundbreaking 1-bit and 1.58-bit ternary matrix kernels.
+
+BitRun wraps these core engines with cross-platform zero-compile distribution, model management, Modelfile custom personas, and an OpenAI-compatible REST server.
+
+---
+
 ## License
 
-MIT License. Built on top of Microsoft Research's BitNet.cpp and Georgi Gerganov's llama.cpp ecosystem.
+MIT License. See [LICENSE](LICENSE) for details.

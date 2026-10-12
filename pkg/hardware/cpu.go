@@ -41,6 +41,8 @@ func Detect() *Info {
 		detectDarwin(info)
 	} else if runtime.GOOS == "linux" {
 		detectLinux(info)
+	} else if runtime.GOOS == "windows" {
+		detectWindows(info)
 	}
 
 	return info
@@ -81,4 +83,23 @@ func detectLinux(info *Info) {
 	// Linux implementation can read /proc/meminfo and /proc/cpuinfo
 	// Default fallbacks:
 	info.TotalRAMGB = 8.0
+}
+
+func detectWindows(info *Info) {
+	// On modern x86_64 Windows (e.g. Intel Core i5-12600K), AVX2 is supported
+	if info.Arch == "amd64" {
+		info.HasAVX2 = true
+	}
+	// Query total RAM via PowerShell CIM query
+	out, err := exec.Command("powershell", "-NoProfile", "-Command", "(Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory").Output()
+	if err == nil {
+		raw := strings.TrimSpace(string(out))
+		bytes, parseErr := strconv.ParseInt(raw, 10, 64)
+		if parseErr == nil {
+			info.TotalRAMGB = float64(bytes) / (1024 * 1024 * 1024)
+			return
+		}
+	}
+	// Fallback heuristic
+	info.TotalRAMGB = 16.0
 }

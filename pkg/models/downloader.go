@@ -82,10 +82,15 @@ func DownloadModel(def ModelDefinition, targetDir string) (string, error) {
 
 	_, err = io.Copy(out, io.TeeReader(resp.Body, pw))
 	if err != nil {
+		out.Close()
 		os.Remove(tmpFile)
 		return "", fmt.Errorf("download interrupted: %w", err)
 	}
 	fmt.Println()
+
+	if err := out.Close(); err != nil {
+		return "", fmt.Errorf("failed to close temporary file: %w", err)
+	}
 
 	if err := os.Rename(tmpFile, targetFile); err != nil {
 		return "", fmt.Errorf("failed to finalize model file: %w", err)
