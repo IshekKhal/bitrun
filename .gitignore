@@ -1,0 +1,23 @@
+# Ignore documentation markdown files as requested
+docs/*.md
+docs/**/*.md
+
+# Personal session logs
+progress.md
+memory.md
+
+# Build outputs and native artifacts
+bin/
+build/
+dist/
+upstream/
+vendor/
+*.o
+*.a
+*.dylib
+*.so
+
+# System & Editor
+.DS_Store
+.vscode/
+.idea/
