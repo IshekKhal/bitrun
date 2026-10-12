@@ -1,6 +1,6 @@
 # BitRun ⚡️
 
-> **The "Ollama of 1-bit LLMs"** — Zero-compile, single-binary runner and model manager for Microsoft BitNet b1.58 models on macOS, Linux, and Windows CPUs.
+> **Zero-compile, single-binary runner and model manager for Microsoft BitNet b1.58 and 1.58-bit ternary LLMs on macOS, Windows, and Linux CPUs.**
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/badge/release-v0.1.0--alpha-green.svg)](https://github.com/IshekKhal/bitrun/releases)
@@ -17,7 +17,7 @@ However, running `BitNet.cpp` today requires:
 * Manually tuning CPU vector instruction flags (AVX-512, AMX, ARM NEON).
 * Dealing with 5–10 GB heavy Docker images that drain laptop batteries.
 
-**BitRun solves this by packaging the native inference engine into a single binary.** 
+**BitRun solves this by packaging the native inference engine into a single binary with a familiar, zero-friction developer experience:** 
 
 ```bash
 # 1. Pull a 1-bit model directly from Hugging Face
