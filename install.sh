@@ -31,11 +31,17 @@ echo "Detected host: $OS/$ARCH"
 mkdir -p "$INSTALL_DIR"
 mkdir -p "$HOME/.bitrun/models"
 
-# In production this curls the release asset tarball from GitHub Releases:
-# TARBALL="bitrun-${VERSION}-${OS}-${ARCH}.tar.gz"
-# curl -fsSL "https://github.com/${REPO}/releases/download/v${VERSION}/${TARBALL}" | tar -xz -C "$HOME/.bitrun"
+TARBALL="bitrun-${VERSION}-${OS}-${ARCH}.tar.gz"
+DOWNLOAD_URL="https://github.com/${REPO}/releases/download/v${VERSION}/${TARBALL}"
 
-echo "Installing binaries into $INSTALL_DIR..."
+echo "Downloading ${TARBALL} from GitHub Releases..."
+if curl -fsSL "$DOWNLOAD_URL" | tar -xz -C "$HOME/.bitrun" --strip-components=1; then
+  chmod +x "$INSTALL_DIR"/* 2>/dev/null || true
+  echo "Binaries installed to $INSTALL_DIR"
+else
+  echo "[NOTE] Release asset not yet published on GitHub Releases or network error."
+  echo "You can build locally with scripts/build_*.sh"
+fi
 
 # Check shell profile
 SHELL_PROFILE=""
