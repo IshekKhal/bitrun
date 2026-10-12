@@ -12,10 +12,12 @@
 
 Microsoft's **BitNet b1.58** proved that ternary (1-bit / 1.58-bit) models can run at extreme speeds on commodity CPUs with 70–80% lower energy consumption by eliminating floating-point multiplications. 
 
-However, running `BitNet.cpp` today requires:
-* Cloning submodules and having modern C++ compilers, CMake, and Python toolchains.
-* Manually tuning CPU vector instruction flags (AVX-512, AMX, ARM NEON).
-* Dealing with 5–10 GB heavy Docker images that drain laptop batteries.
+Ternary models are engineered for **local CPU inference, battery-powered laptops, edge devices, and embedded tasks** where running heavy FP16 or INT4 models drains battery or requires dedicated GPUs.
+
+However, testing `BitNet.cpp` today requires:
+* Cloning recursive submodules and managing C++ compilers, CMake, and Python toolchains.
+* Manually tuning CPU vector instruction flags (AVX2, AVX-512, ARM NEON).
+* Dealing with 5–10 GB heavy Docker images that defeat the purpose of low-power computing.
 
 **BitRun solves this by packaging the native inference engine into a single binary with a familiar, zero-friction developer experience:** 
 
