@@ -1,6 +1,7 @@
-# Ignore documentation markdown files as requested
-docs/*.md
-docs/**/*.md
+# Ignore documentation files and personal docs as requested
+docs/
+docs/*
+docs/**/*
 
 # Personal session logs
 progress.md
