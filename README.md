@@ -47,13 +47,19 @@ bitrun serve bitnet-2b
 | **Falcon3 1B Instruct** (`falcon3-1b`) | **1.30 GB** | **93–210 t/s** | **40–45 t/s** | **~1.9 GB** | **0% (Pure CPU AVX2)** |
 | **BitNet 70M** (`bitnet-70m`) | **79 MB** | **2,419 t/s** | **492 t/s** | **< 150 MB** | **0% (Pure CPU AVX2)** |
 
+### 3. Linux x86_64 (WSL2 / Ubuntu, 4 Cores, AVX2 SIMD)
+| Model | Size | Prompt Speed | Generation Speed | Memory (RAM) | GPU Utilization |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Falcon3 1B Instruct** (`falcon3-1b`) | **1.30 GB** | **~130 ms TTFT** | **40–45 t/s** | **~1.9 GB** | **0% (Pure CPU AVX2)** |
+| **BitNet 70M** (`bitnet-70m`) | **79 MB** | **< 25 ms TTFT** | **Fast CPU SIMD** | **< 150 MB** | **0% (Pure CPU AVX2)** |
+
 ---
 
 ## Quickstart
 
 ### 1. One-Line Installation
 
-**macOS (Apple Silicon)**:
+**macOS (Apple Silicon) & Linux (x86_64)**:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/IshekKhal/bitrun/main/install.sh | sh
 ```
@@ -160,6 +166,10 @@ BitRun uses a **decoupled supervisor-engine design**:
 BitRun stands on the shoulders of giants:
 * **[llama.cpp](https://github.com/ggerganov/llama.cpp)** by Georgi Gerganov and the open-source community (MIT License) — The pioneering CPU inference architecture and GGUF specification.
 * **[BitNet.cpp](https://github.com/microsoft/BitNet)** by Microsoft Research (MIT License) — Groundbreaking 1-bit and 1.58-bit ternary matrix kernels.
+
+BitRun contributes back to upstream:
+* **[microsoft/BitNet#642](https://github.com/microsoft/BitNet/pull/642)** — ARM64 2B batch stride, FFN activation, and LLaMA-3 tokenizer inference fix.
+* **[microsoft/BitNet#644](https://github.com/microsoft/BitNet/pull/644)** — Native MSVC compiler support and CLI build tools on Windows.
 
 BitRun wraps these core engines with cross-platform zero-compile distribution, model management, Modelfile custom personas, and an OpenAI-compatible REST server.
 
