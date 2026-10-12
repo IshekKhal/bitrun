@@ -18,11 +18,15 @@ type RunnerConfig struct {
 	EngineBinary string
 	ModelPath    string
 	Prompt       string
+	SystemPrompt string
+	ChatTemplate string
 	Threads      int
 	ContextSize  int
 	Temperature  float64
+	StopTokens   []string
 	Host         string
 	Port         int
+	ModelAlias   string
 }
 
 // DefaultConfig generates a recommended configuration based on host hardware.
@@ -53,14 +57,31 @@ func RunInteractive(ctx context.Context, cfg *RunnerConfig) error {
 		"-c", strconv.Itoa(cfg.ContextSize),
 		"-t", strconv.Itoa(cfg.Threads),
 		"--temp", fmt.Sprintf("%.2f", cfg.Temperature),
-		"-ngl", "0", // Run on CPU for pure 1-bit SIMD execution
-		"-cnv",      // Conversation / chat mode
-		"-r", "<|end of answer|>",
-		"-r", "<|endoftext|>",
-		"-r", "<|eot_id|>",
-		"-r", "<|im_end|>",
-		"--log-disable",
+		"-ngl", "0",            // Run on CPU for pure 1-bit SIMD execution
+		"--no-op-offload",      // Disable Metal offload attempts on Apple Silicon
+		"-cnv",                 // Conversation / chat mode
 	}
+
+	if cfg.SystemPrompt != "" {
+		args = append(args, "-sys", cfg.SystemPrompt)
+	}
+	if cfg.ChatTemplate != "" {
+		args = append(args, "--chat-template", cfg.ChatTemplate)
+	}
+
+	stopTokens := []string{
+		"<|end of answer|>",
+		"<|endoftext|>",
+		"<|eot_id|>",
+		"<|im_end|>",
+	}
+	if len(cfg.StopTokens) > 0 {
+		stopTokens = append(stopTokens, cfg.StopTokens...)
+	}
+	for _, st := range stopTokens {
+		args = append(args, "-r", st)
+	}
+	args = append(args, "--log-disable")
 
 	cmd := exec.CommandContext(ctx, cfg.EngineBinary, args...)
 	cmd.Stdin = os.Stdin
@@ -74,14 +95,39 @@ func RunInteractive(ctx context.Context, cfg *RunnerConfig) error {
 func RunOneShot(ctx context.Context, cfg *RunnerConfig, out io.Writer) error {
 	args := []string{
 		"-m", cfg.ModelPath,
-		"-p", cfg.Prompt,
 		"-c", strconv.Itoa(cfg.ContextSize),
 		"-t", strconv.Itoa(cfg.Threads),
 		"--temp", fmt.Sprintf("%.2f", cfg.Temperature),
 		"-ngl", "0",
+		"--no-op-offload",
+		"-cnv",
+		"-st",
+		"-p", cfg.Prompt,
 	}
 
+	if cfg.SystemPrompt != "" {
+		args = append(args, "-sys", cfg.SystemPrompt)
+	}
+	if cfg.ChatTemplate != "" {
+		args = append(args, "--chat-template", cfg.ChatTemplate)
+	}
+
+	stopTokens := []string{
+		"<|end of answer|>",
+		"<|endoftext|>",
+		"<|eot_id|>",
+		"<|im_end|>",
+	}
+	if len(cfg.StopTokens) > 0 {
+		stopTokens = append(stopTokens, cfg.StopTokens...)
+	}
+	for _, st := range stopTokens {
+		args = append(args, "-r", st)
+	}
+	args = append(args, "--log-disable")
+
 	cmd := exec.CommandContext(ctx, cfg.EngineBinary, args...)
+	cmd.Stdin = os.Stdin
 	cmd.Stdout = out
 	cmd.Stderr = os.Stderr
 
@@ -105,7 +151,15 @@ func StartServer(ctx context.Context, cfg *RunnerConfig) (*ServerProcess, error)
 		"--port", strconv.Itoa(cfg.Port),
 		"--temp", fmt.Sprintf("%.2f", cfg.Temperature),
 		"-ngl", "0",
+		"--no-op-offload",
 		"-cb", // continuous batching
+	}
+
+	if cfg.ModelAlias != "" {
+		args = append(args, "-a", cfg.ModelAlias)
+	}
+	if cfg.ChatTemplate != "" {
+		args = append(args, "--chat-template", cfg.ChatTemplate)
 	}
 
 	cmd := exec.CommandContext(ctx, cfg.EngineBinary, args...)

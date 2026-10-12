@@ -38,6 +38,7 @@ Tested live on Apple Silicon (M4 Pro CPU, pure CPU inference with `-ngl 0`):
 
 | Model | Size | Prompt Speed | Generation Speed | Memory (RAM) | GPU Utilization |
 | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Falcon3 1B Instruct** (`falcon3-1b`) | **1.30 GB** | **137.5 t/s** | **98.6 t/s** | **~1.9 GB** | **0% (Pure CPU SIMD)** |
 | **BitNet b1.58 2.4B** (`bitnet-2b`) | **1.13 GB** | **60.1 t/s** | **39.8 t/s** | **~1.8 GB** | **0% (Pure CPU SIMD)** |
 | **BitNet 70M** (`bitnet-70m`) | **79 MB** | **8,758 t/s** | **1,355 t/s** | **< 150 MB** | **0% (Pure CPU SIMD)** |
 
@@ -57,17 +58,50 @@ curl -fsSL https://raw.githubusercontent.com/IshekKhal/bitrun/main/install.sh | 
 # Display CPU topology and vector instruction support
 bitrun hardware
 
-# List all cached models in ~/.bitrun/models
+# List all downloaded models and custom personas
 bitrun list
 
 # Download a model with dynamic progress and resume support
-bitrun pull bitnet-70m
+bitrun pull falcon3-1b
 
 # Run interactive terminal chat
-bitrun run bitnet-70m
+bitrun run falcon3-1b
+
+# Run a one-shot prompt directly
+bitrun run falcon3-1b "Explain RAII in C++"
+
+# Create a custom model persona from a Modelfile
+bitrun create gopher -f Modelfile
 
 # Serve OpenAI-compatible REST API on port 11435
-bitrun serve bitnet-70m
+bitrun serve falcon3-1b
+```
+
+---
+
+## Modelfiles & Custom Personas
+
+Create custom system personas and parameter presets using standard Modelfiles:
+
+```dockerfile
+# Modelfile
+FROM falcon3-1b
+SYSTEM You are an expert Go systems engineer. Write dense, production-grade code.
+PARAMETER temperature 0.2
+PARAMETER context_size 4096
+```
+
+Build and run your custom persona:
+
+```bash
+# Create custom persona
+bitrun create gopher -f Modelfile
+
+# Chat with your persona
+bitrun run gopher
+
+# Or run one-shot completions
+bitrun run gopher "Write a ring buffer implementation"
 ```
 
 ---

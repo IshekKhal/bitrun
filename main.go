@@ -2,11 +2,12 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 
 	"bitrun/pkg/engine"
@@ -19,15 +20,17 @@ const version = "0.1.0-alpha"
 func printUsage() {
 	fmt.Printf("BitRun — The 1-bit LLM Runner (v%s)\n\n", version)
 	fmt.Println("Usage:")
-	fmt.Println("  bitrun <command> [arguments]\n")
+	fmt.Println("  bitrun <command> [arguments]")
+	fmt.Println()
 	fmt.Println("Commands:")
-	fmt.Println("  run <model>      Run an interactive chat session with a 1-bit model")
-	fmt.Println("  pull <model>     Download model weights to local storage")
-	fmt.Println("  list             List downloaded models in ~/.bitrun/models")
-	fmt.Println("  serve <model>    Start local OpenAI-compatible HTTP API server")
-	fmt.Println("  hardware         Display host CPU vector capabilities and thread tuning")
-	fmt.Println("  version          Print BitRun version")
-	fmt.Println("\nAvailable model tags:")
+	fmt.Println("  run <model>            Run an interactive chat session with a 1-bit model")
+	fmt.Println("  pull <model>           Download model weights to local storage")
+	fmt.Println("  list                   List downloaded models and custom personas")
+	fmt.Println("  create <name> -f <file> Create a custom model persona from a Modelfile")
+	fmt.Println("  serve <model>          Start local OpenAI-compatible HTTP API server")
+	fmt.Println("  hardware               Display host CPU vector capabilities and thread tuning")
+	fmt.Println("  version                Print BitRun version")
+	fmt.Println("\nAvailable base model tags:")
 	for tag, def := range models.Catalog {
 		fmt.Printf("  %-14s %s (~%d MB)\n", tag, def.Description, def.SizeMB)
 	}
@@ -68,19 +71,97 @@ func main() {
 			fmt.Fprintf(os.Stderr, "[bitrun] Error listing models: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Println("NAME            SIZE       PATH")
+
+		fmt.Println("DOWNLOADED BASE MODELS:")
+		fmt.Printf("  %-32s %-12s %s\n", "NAME", "SIZE", "TAG")
 		count := 0
 		for _, f := range files {
 			if !f.IsDir() && filepath.Ext(f.Name()) == ".gguf" {
 				info, _ := f.Info()
 				sizeMB := float64(info.Size()) / (1024 * 1024)
-				fmt.Printf("%-15s %-10.1f %s\n", f.Name(), sizeMB, filepath.Join(modelsDir, f.Name()))
+				tag := "-"
+				for t, def := range models.Catalog {
+					if def.Filename == f.Name() {
+						tag = t
+						break
+					}
+				}
+				fmt.Printf("  %-32s %-12.1f %s\n", f.Name(), sizeMB, tag)
 				count++
 			}
 		}
 		if count == 0 {
-			fmt.Println("(No models downloaded yet. Run 'bitrun pull bitnet-2b' to install one)")
+			fmt.Println("  (No base models downloaded yet. Run 'bitrun pull falcon3-1b' to install one)")
 		}
+
+		manifests, _ := models.ListManifests()
+		fmt.Println("\nCUSTOM MODELS (PERSONAS):")
+		fmt.Printf("  %-18s %-14s %-12s %s\n", "NAME", "BASE MODEL", "CREATED", "SYSTEM PROMPT")
+		if len(manifests) == 0 {
+			fmt.Println("  (No custom models created yet. Run 'bitrun create <name> -f Modelfile')")
+		} else {
+			for _, m := range manifests {
+				created := m.CreatedAt
+				if len(created) > 10 {
+					created = created[:10]
+				}
+				sysSnippet := strings.ReplaceAll(m.SystemPrompt, "\n", " ")
+				if len(sysSnippet) > 38 {
+					sysSnippet = sysSnippet[:35] + "..."
+				}
+				fmt.Printf("  %-18s %-14s %-12s %s\n", m.Name, m.BaseModel, created, sysSnippet)
+			}
+		}
+		fmt.Println()
+
+	case "create":
+		if len(os.Args) < 3 {
+			fmt.Fprintln(os.Stderr, "Usage: bitrun create <name> -f <Modelfile>")
+			os.Exit(1)
+		}
+
+		var name string
+		var modelfilePath string
+		for i := 2; i < len(os.Args); i++ {
+			arg := os.Args[i]
+			if arg == "-f" || arg == "--file" {
+				if i+1 < len(os.Args) {
+					modelfilePath = os.Args[i+1]
+					i++
+				}
+			} else if name == "" && !strings.HasPrefix(arg, "-") {
+				name = arg
+			}
+		}
+
+		if name == "" || modelfilePath == "" {
+			fmt.Fprintln(os.Stderr, "Usage: bitrun create <name> -f <Modelfile>")
+			os.Exit(1)
+		}
+
+		manifest, err := models.ParseModelfilePath(modelfilePath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[bitrun] Error parsing Modelfile: %v\n", err)
+			os.Exit(1)
+		}
+
+		manifest.Name = name
+
+		// Validate base model exists in Catalog or as direct file
+		if _, ok := models.Catalog[manifest.BaseModel]; !ok {
+			if _, err := os.Stat(manifest.BaseModel); os.IsNotExist(err) {
+				fmt.Fprintf(os.Stderr, "[bitrun] Unknown base model '%s' in %s.\nAvailable models: bitnet-70m, falcon3-1b, bitnet-2b, falcon3-3b\n", manifest.BaseModel, modelfilePath)
+				os.Exit(1)
+			}
+		}
+
+		if err := models.SaveManifest(manifest); err != nil {
+			fmt.Fprintf(os.Stderr, "[bitrun] Failed to save model manifest: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("[bitrun] Created model '%s' from %s (base: %s)\n", name, modelfilePath, manifest.BaseModel)
+		fmt.Printf("Run 'bitrun run %s' to start chatting.\n", name)
 
 	case "pull":
 		if len(os.Args) < 3 {
@@ -101,22 +182,26 @@ func main() {
 
 	case "run":
 		if len(os.Args) < 3 {
-			fmt.Fprintln(os.Stderr, "Usage: bitrun run <model-tag>")
+			fmt.Fprintln(os.Stderr, "Usage: bitrun run <model-tag-or-name>")
 			os.Exit(1)
 		}
 		tag := os.Args[2]
-		def, ok := models.Catalog[tag]
-		if !ok {
-			fmt.Fprintf(os.Stderr, "[bitrun] Unknown model '%s'.\n", tag)
+		modelPath, def, manifest, err := resolveModel(tag)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[bitrun] %v\n", err)
 			os.Exit(1)
 		}
 
-		modelFile := filepath.Join(models.GetModelsDir(), def.Filename)
-		if _, err := os.Stat(modelFile); os.IsNotExist(err) {
-			fmt.Printf("[bitrun] Model '%s' not found locally. Initiating download...\n", tag)
-			_, err = models.DownloadModel(def, models.GetModelsDir())
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "[bitrun] Download failed: %v\n", err)
+		if _, statErr := os.Stat(modelPath); os.IsNotExist(statErr) {
+			if def.Tag != "" && def.RemoteFilename != "" {
+				fmt.Printf("[bitrun] Base model '%s' not found locally. Initiating download...\n", def.Tag)
+				_, err = models.DownloadModel(def, models.GetModelsDir())
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "[bitrun] Download failed: %v\n", err)
+					os.Exit(1)
+				}
+			} else {
+				fmt.Fprintf(os.Stderr, "[bitrun] Model file not found: %s\n", modelPath)
 				os.Exit(1)
 			}
 		}
@@ -127,36 +212,74 @@ func main() {
 			os.Exit(1)
 		}
 
-		cfg := engine.DefaultConfig(engineBin, modelFile)
+		cfg := engine.DefaultConfig(engineBin, modelPath)
 		if def.ContextSize > 0 {
 			cfg.ContextSize = def.ContextSize
 		}
+
+		if manifest != nil {
+			if manifest.SystemPrompt != "" {
+				cfg.SystemPrompt = manifest.SystemPrompt
+			}
+			if manifest.Template != "" {
+				cfg.ChatTemplate = manifest.Template
+			}
+			if temp, ok := manifest.Parameters["temperature"].(float64); ok {
+				cfg.Temperature = temp
+			}
+			if ctx, ok := manifest.Parameters["context_size"].(int); ok {
+				cfg.ContextSize = ctx
+			}
+			if thr, ok := manifest.Parameters["threads"].(int); ok {
+				cfg.Threads = thr
+			}
+			if stop, ok := manifest.Parameters["stop"].(string); ok {
+				cfg.StopTokens = append(cfg.StopTokens, stop)
+			}
+		}
+
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 
-		fmt.Printf("[bitrun] Loading %s on %d CPU threads...\n", def.Name, cfg.Threads)
-		if err := engine.RunInteractive(ctx, cfg); err != nil {
-			fmt.Fprintf(os.Stderr, "[bitrun] Session error: %v\n", err)
+		if manifest != nil {
+			fmt.Printf("[bitrun] Loading persona '%s' (base: %s) on %d CPU threads...\n", manifest.Name, def.Name, cfg.Threads)
+		} else {
+			fmt.Printf("[bitrun] Loading %s on %d CPU threads...\n", def.Name, cfg.Threads)
+		}
+
+		if len(os.Args) > 3 {
+			cfg.Prompt = strings.Join(os.Args[3:], " ")
+			if err := engine.RunOneShot(ctx, cfg, os.Stdout); err != nil {
+				fmt.Fprintf(os.Stderr, "[bitrun] Session error: %v\n", err)
+			}
+		} else {
+			if err := engine.RunInteractive(ctx, cfg); err != nil {
+				fmt.Fprintf(os.Stderr, "[bitrun] Session error: %v\n", err)
+			}
 		}
 
 	case "serve":
 		if len(os.Args) < 3 {
-			fmt.Fprintln(os.Stderr, "Usage: bitrun serve <model-tag> [--port 11435]")
+			fmt.Fprintln(os.Stderr, "Usage: bitrun serve <model-tag-or-name> [--port 11435]")
 			os.Exit(1)
 		}
 		tag := os.Args[2]
-		def, ok := models.Catalog[tag]
-		if !ok {
-			fmt.Fprintf(os.Stderr, "[bitrun] Unknown model '%s'.\n", tag)
+		modelPath, def, manifest, err := resolveModel(tag)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[bitrun] %v\n", err)
 			os.Exit(1)
 		}
 
-		modelFile := filepath.Join(models.GetModelsDir(), def.Filename)
-		if _, err := os.Stat(modelFile); os.IsNotExist(err) {
-			fmt.Printf("[bitrun] Model '%s' not found locally. Initiating download...\n", tag)
-			_, err = models.DownloadModel(def, models.GetModelsDir())
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "[bitrun] Download failed: %v\n", err)
+		if _, statErr := os.Stat(modelPath); os.IsNotExist(statErr) {
+			if def.Tag != "" && def.RemoteFilename != "" {
+				fmt.Printf("[bitrun] Base model '%s' not found locally. Initiating download...\n", def.Tag)
+				_, err = models.DownloadModel(def, models.GetModelsDir())
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "[bitrun] Download failed: %v\n", err)
+					os.Exit(1)
+				}
+			} else {
+				fmt.Fprintf(os.Stderr, "[bitrun] Model file not found: %s\n", modelPath)
 				os.Exit(1)
 			}
 		}
@@ -167,14 +290,48 @@ func main() {
 			os.Exit(1)
 		}
 
-		cfg := engine.DefaultConfig(engineBin, modelFile)
+		cfg := engine.DefaultConfig(engineBin, modelPath)
 		if def.ContextSize > 0 {
 			cfg.ContextSize = def.ContextSize
 		}
+
+		if manifest != nil {
+			cfg.ModelAlias = manifest.Name
+			if manifest.SystemPrompt != "" {
+				cfg.SystemPrompt = manifest.SystemPrompt
+			}
+			if manifest.Template != "" {
+				cfg.ChatTemplate = manifest.Template
+			}
+			if temp, ok := manifest.Parameters["temperature"].(float64); ok {
+				cfg.Temperature = temp
+			}
+			if ctx, ok := manifest.Parameters["context_size"].(int); ok {
+				cfg.ContextSize = ctx
+			}
+			if thr, ok := manifest.Parameters["threads"].(int); ok {
+				cfg.Threads = thr
+			}
+		} else {
+			cfg.ModelAlias = tag
+		}
+
+		for i := 3; i < len(os.Args); i++ {
+			if (os.Args[i] == "--port" || os.Args[i] == "-p") && i+1 < len(os.Args) {
+				if p, err := strconv.Atoi(os.Args[i+1]); err == nil {
+					cfg.Port = p
+				}
+			}
+		}
+
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 
-		fmt.Printf("[bitrun] Starting OpenAI-compatible server for %s on http://%s:%d...\n", def.Name, cfg.Host, cfg.Port)
+		displayName := def.Name
+		if manifest != nil {
+			displayName = fmt.Sprintf("%s (persona: %s)", def.Name, manifest.Name)
+		}
+		fmt.Printf("[bitrun] Starting OpenAI-compatible server for %s on http://%s:%d...\n", displayName, cfg.Host, cfg.Port)
 		proc, err := engine.StartServer(ctx, cfg)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "[bitrun] Failed to start server: %v\n", err)
@@ -186,9 +343,41 @@ func main() {
 		fmt.Println("\n[bitrun] Server stopped.")
 
 	default:
-		flag.Usage()
+		printUsage()
 		os.Exit(1)
 	}
+}
+
+// resolveModel resolves a model tag or custom persona name to its disk path and definition.
+func resolveModel(tag string) (string, models.ModelDefinition, *models.Manifest, error) {
+	if models.ManifestExists(tag) {
+		manifest, err := models.LoadManifest(tag)
+		if err != nil {
+			return "", models.ModelDefinition{}, nil, fmt.Errorf("failed to load custom model '%s': %w", tag, err)
+		}
+		baseDef, ok := models.Catalog[manifest.BaseModel]
+		if ok {
+			modelPath := filepath.Join(models.GetModelsDir(), baseDef.Filename)
+			return modelPath, baseDef, manifest, nil
+		}
+		if _, statErr := os.Stat(manifest.BaseModel); statErr == nil {
+			modelPath := manifest.BaseModel
+			def := models.ModelDefinition{
+				Tag:         manifest.Name,
+				Name:        manifest.Name,
+				ContextSize: 2048,
+			}
+			return modelPath, def, manifest, nil
+		}
+		return "", models.ModelDefinition{}, nil, fmt.Errorf("custom model '%s' specifies unknown base model '%s'", tag, manifest.BaseModel)
+	}
+
+	baseDef, ok := models.Catalog[tag]
+	if !ok {
+		return "", models.ModelDefinition{}, nil, fmt.Errorf("unknown model '%s'. Run 'bitrun list' or 'bitrun' for options", tag)
+	}
+	modelPath := filepath.Join(models.GetModelsDir(), baseDef.Filename)
+	return modelPath, baseDef, nil, nil
 }
 
 // locateEngineBinary checks local development build paths or ~/.bitrun/bin
