@@ -55,6 +55,10 @@ func RunInteractive(ctx context.Context, cfg *RunnerConfig) error {
 		"--temp", fmt.Sprintf("%.2f", cfg.Temperature),
 		"-ngl", "0", // Run on CPU for pure 1-bit SIMD execution
 		"-cnv",      // Conversation / chat mode
+		"-r", "<|end of answer|>",
+		"-r", "<|endoftext|>",
+		"-r", "<|eot_id|>",
+		"-r", "<|im_end|>",
 		"--log-disable",
 	}
 
