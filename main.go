@@ -18,7 +18,7 @@ import (
 	"bitrun/pkg/telemetry"
 )
 
-const version = "0.1.0-alpha"
+const version = "0.1.1-alpha"
 
 func printUsage() {
 	fmt.Printf("BitRun — The 1-bit LLM Runner (v%s)\n\n", version)

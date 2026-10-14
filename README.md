@@ -3,7 +3,7 @@
 > **Zero-compile, self-contained standalone runner and model manager for Microsoft BitNet b1.58 and 1.58-bit ternary LLMs on macOS, Windows, and Linux CPUs.**
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v0.1.0--alpha-green.svg)](https://github.com/IshekKhal/bitrun/releases)
+[![Release](https://img.shields.io/badge/release-v0.1.1--alpha-green.svg)](https://github.com/IshekKhal/bitrun/releases)
 [![Architecture](https://img.shields.io/badge/arch-Apple%20Silicon%20%7C%20x86__64-orange.svg)](#)
 
 ---

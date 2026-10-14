@@ -3,7 +3,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$Version = "0.1.0-alpha"
+$Version = "0.1.1-alpha"
 $Repo = "IshekKhal/bitrun"
 $InstallDir = Join-Path $env:USERPROFILE ".bitrun\bin"
 $ModelsDir = Join-Path $env:USERPROFILE ".bitrun\models"
