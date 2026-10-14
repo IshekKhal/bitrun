@@ -1,6 +1,6 @@
 # BitRun ⚡️
 
-> **Zero-compile, single-binary runner and model manager for Microsoft BitNet b1.58 and 1.58-bit ternary LLMs on macOS, Windows, and Linux CPUs.**
+> **Zero-compile, self-contained standalone runner and model manager for Microsoft BitNet b1.58 and 1.58-bit ternary LLMs on macOS, Windows, and Linux CPUs.**
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/badge/release-v0.1.0--alpha-green.svg)](https://github.com/IshekKhal/bitrun/releases)
@@ -19,7 +19,7 @@ However, testing `BitNet.cpp` today requires:
 * Manually tuning CPU vector instruction flags (AVX2, AVX-512, ARM NEON).
 * Dealing with 5–10 GB heavy Docker images that defeat the purpose of low-power computing.
 
-**BitRun solves this by packaging the native inference engine into a single binary with a familiar, zero-friction developer experience:** 
+**BitRun solves this by packaging the native inference engine into a self-contained runner with zero external dependencies and a familiar developer experience:** 
 
 ```bash
 # 1. Pull a 1-bit model directly from Hugging Face
@@ -39,21 +39,21 @@ bitrun serve bitnet-2b
 ### 1. Apple Silicon (M4 Pro CPU, 12 Cores, Pure CPU SIMD `-ngl 0`)
 | Model | Size | Prompt Speed | Generation Speed | Memory (RAM) | GPU Utilization |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Falcon3 1B Instruct** (`falcon3-1b`) | **1.30 GB** | **137.5 t/s** | **98.6 t/s** | **~1.9 GB** | **0% (Pure CPU SIMD)** |
+| **Falcon3 1B Instruct** (`falcon3-1b`) | **1.30 GB** | **137–142 t/s** | **98–127 t/s** | **~1.9 GB** | **0% (Pure CPU SIMD)** |
 | **BitNet b1.58 2.4B** (`bitnet-2b`) | **1.13 GB** | **60.1 t/s** | **39.8 t/s** | **~1.8 GB** | **0% (Pure CPU SIMD)** |
 | **BitNet 70M** (`bitnet-70m`) | **79 MB** | **8,758 t/s** | **1,355 t/s** | **< 150 MB** | **0% (Pure CPU SIMD)** |
 
 ### 2. Windows x86_64 (Intel Core i5-12600K CPU, 16 Threads, AVX2 SIMD)
 | Model | Size | Prompt Speed | Generation Speed | Memory (RAM) | GPU Utilization |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Falcon3 1B Instruct** (`falcon3-1b`) | **1.30 GB** | **93–210 t/s** | **40–45 t/s** | **~1.9 GB** | **0% (Pure CPU AVX2)** |
+| **Falcon3 1B Instruct** (`falcon3-1b`) | **1.30 GB** | **209.6 t/s** | **39–45 t/s** | **~1.9 GB** | **0% (Pure CPU AVX2)** |
 | **BitNet 70M** (`bitnet-70m`) | **79 MB** | **2,419 t/s** | **492 t/s** | **< 150 MB** | **0% (Pure CPU AVX2)** |
 
 ### 3. Linux x86_64 (WSL2 / Ubuntu, 4 Cores, AVX2 SIMD)
 | Model | Size | Prompt Speed | Generation Speed | Memory (RAM) | GPU Utilization |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Falcon3 1B Instruct** (`falcon3-1b`) | **1.30 GB** | **~130 ms TTFT** | **40–45 t/s** | **~1.9 GB** | **0% (Pure CPU AVX2)** |
-| **BitNet 70M** (`bitnet-70m`) | **79 MB** | **< 25 ms TTFT** | **Fast CPU SIMD** | **< 150 MB** | **0% (Pure CPU AVX2)** |
+| **Falcon3 1B Instruct** (`falcon3-1b`) | **1.30 GB** | **~130 t/s** | **40–45 t/s** | **~1.9 GB** | **0% (Pure CPU AVX2)** |
+| **BitNet 70M** (`bitnet-70m`) | **79 MB** | **~2,100 t/s** | **~450 t/s** | **< 150 MB** | **0% (Pure CPU AVX2)** |
 
 ---
 
@@ -92,7 +92,7 @@ bitrun run falcon3-1b "Explain RAII in C++"
 # Create a custom model persona from a Modelfile
 bitrun create gopher -f Modelfile
 
-# Serve OpenAI-compatible REST API on port 11435
+# Serve OpenAI-compatible REST API on port 11435 (avoids Ollama 11434 conflict)
 bitrun serve falcon3-1b
 ```
 
@@ -127,13 +127,13 @@ bitrun run gopher "Write a ring buffer implementation"
 
 ## OpenAI-Compatible API
 
-When running `bitrun serve`, you can point any OpenAI-compatible tool (Cursor, Continue.dev, Open WebUI, LangChain, Python SDK) to `http://localhost:11435/v1`:
+When running `bitrun serve`, you can point any OpenAI-compatible tool (Cursor, Continue.dev, Open WebUI, LangChain, Python SDK) to `http://localhost:11435/v1` (port 11435 avoids colliding with default Ollama installations):
 
 ```bash
 curl -s http://127.0.0.1:11435/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "Bitnet-M7-70m",
+    "model": "bitnet-70m",
     "messages": [
       {"role": "user", "content": "What is the capital of France?"}
     ],
@@ -145,13 +145,12 @@ curl -s http://127.0.0.1:11435/v1/chat/completions \
 
 ## Supported Models Catalog
 
-| Model Tag | Parameters | Format | Size | Description |
-| :--- | :--- | :--- | :--- | :--- |
-| `bitnet-70m` | 70M | `Q8_0` / Ternary | ~79 MB | Ultra-compact smoke test model |
-| `bitnet-2b` | 2.4B | `i2_s` Ternary | ~1.2 GB | Official Microsoft BitNet b1.58 2B |
-| `falcon3-1b` | 1B | `i2_s` Ternary | ~700 MB | TII Falcon3 1B Instruct 1.58-bit |
-| `falcon3-3b` | 3B | `i2_s` Ternary | ~1.8 GB | TII Falcon3 3B Instruct 1.58-bit |
-| `llama3-8b` | 8B | `i2_s` Ternary | ~2.4 GB | 1-Bit LLM Llama3 8B 1.58-bit |
+| Model Tag | Parameters | Format | Disk Size | Context | Description |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `falcon3-1b` | 1B | `i2_s` Ternary | ~1.30 GB | 4,096 | TII Falcon3 1B Instruct conversational model |
+| `bitnet-2b` | 2.4B | `i2_s` Ternary | ~1.13 GB | 2,048 | Official Microsoft BitNet b1.58 2B4T ternary model |
+| `falcon3-3b` | 3B | `i2_s` Ternary | ~2.80 GB | 4,096 | TII Falcon3 3B Instruct conversational model |
+| `bitnet-70m` | 70M | `Q8_0` | ~79 MB | 768 | Ultra-compact smoke test model |
 
 ---
 
