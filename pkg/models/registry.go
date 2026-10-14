@@ -60,6 +60,26 @@ var Catalog = map[string]ModelDefinition{
 		ContextSize:    4096,
 		Description:    "TII Falcon3 3B Instruct 1.58-bit model (~2.8 GB)",
 	},
+	"bonsai-8b": {
+		Tag:            "bonsai-8b",
+		Name:           "Ternary-Bonsai-8B",
+		Repo:           "prism-ml/Ternary-Bonsai-8B-gguf",
+		RemoteFilename: "Ternary-Bonsai-8B-Q2_0.gguf",
+		Filename:       "ternary-bonsai-8b-q2_0.gguf",
+		SizeMB:         2081,
+		ContextSize:    8192,
+		Description:    "PrismML Ternary Bonsai 8B Qwen-based 1.58-bit model (~2.08 GB)",
+	},
+	"bonsai-1.7b": {
+		Tag:            "bonsai-1.7b",
+		Name:           "Bonsai-1.7B",
+		Repo:           "prism-ml/Bonsai-1.7B-gguf",
+		RemoteFilename: "Bonsai-1.7B.gguf",
+		Filename:       "bonsai-1.7b.gguf",
+		SizeMB:         236,
+		ContextSize:    4096,
+		Description:    "PrismML Bonsai 1.7B 1-bit extreme-edge model (~236 MB)",
+	},
 }
 
 // GetRootDir returns the standard root configuration directory ~/.bitrun

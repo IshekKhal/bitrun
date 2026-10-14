@@ -74,6 +74,10 @@ if (-not (Test-Path $BinDir)) {
 # 3. Build native C++ engine
 Write-Host "[1/3] Configuring CMake for Native BitNet C++ Engine..." -ForegroundColor Yellow
 $BitnetDir = Join-Path $ProjectRoot "upstream\bitnet"
+if (-not (Test-Path $BitnetDir)) {
+    Write-Host "[INFO] Cloning BitRun engine (bitrun-engine branch) from GitHub..." -ForegroundColor Yellow
+    git clone --depth 1 -b bitrun-engine --recursive https://github.com/IshekKhal/BitNet.git $BitnetDir
+}
 Push-Location $BitnetDir
 
 cmake -B build -DGGML_AVX2=ON -DBUILD_SHARED_LIBS=OFF -DLLAMA_BUILD_COMMON=ON -DLLAMA_BUILD_TOOLS=ON -DLLAMA_BUILD_SERVER=ON -DLLAMA_CURL=OFF

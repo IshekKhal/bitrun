@@ -1,32 +1,38 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"bitrun/pkg/hardware"
+	"bitrun/pkg/telemetry"
 )
 
 // RunnerConfig specifies execution parameters for the native BitNet engine.
 type RunnerConfig struct {
-	EngineBinary string
-	ModelPath    string
-	Prompt       string
-	SystemPrompt string
-	ChatTemplate string
-	Threads      int
-	ContextSize  int
-	Temperature  float64
-	StopTokens   []string
-	Host         string
-	Port         int
-	ModelAlias   string
+	EngineBinary  string
+	ModelPath     string
+	Prompt        string
+	SystemPrompt  string
+	ChatTemplate  string
+	Threads       int
+	ContextSize   int
+	PredictTokens int
+	Temperature   float64
+	StopTokens    []string
+	Host          string
+	Port          int
+	ModelAlias    string
+	EnablePower   bool
 }
 
 // DefaultConfig generates a recommended configuration based on host hardware.
@@ -105,6 +111,10 @@ func RunOneShot(ctx context.Context, cfg *RunnerConfig, out io.Writer) error {
 		"-p", cfg.Prompt,
 	}
 
+	if cfg.PredictTokens > 0 {
+		args = append(args, "-n", strconv.Itoa(cfg.PredictTokens))
+	}
+
 	if cfg.SystemPrompt != "" {
 		args = append(args, "-sys", cfg.SystemPrompt)
 	}
@@ -132,6 +142,66 @@ func RunOneShot(ctx context.Context, cfg *RunnerConfig, out io.Writer) error {
 	cmd.Stderr = os.Stderr
 
 	return cmd.Run()
+}
+
+// RunBenchmark executes a standardized benchmark and captures telemetry metrics.
+func RunBenchmark(ctx context.Context, cfg *RunnerConfig, out io.Writer) (*telemetry.PowerMetrics, error) {
+	pm := telemetry.NewPowerMonitor(cfg.Threads)
+	pm.Start()
+
+	var buf bytes.Buffer
+	multiOut := io.MultiWriter(out, &buf)
+
+	startTime := time.Now()
+	err := RunOneShot(ctx, cfg, multiOut)
+	totalDur := time.Since(startTime)
+	if err != nil {
+		return nil, err
+	}
+
+	output := buf.String()
+
+	// Parse llama timing stats if printed: [ Prompt: 83.3 t/s | Generation: 49.3 t/s ]
+	var promptSpeed float64
+	var genSpeed float64
+
+	promptRe := regexp.MustCompile(`Prompt:\s*([\d\.]+)\s*t/s`)
+	if m := promptRe.FindStringSubmatch(output); len(m) > 1 {
+		promptSpeed, _ = strconv.ParseFloat(m[1], 64)
+	}
+
+	genRe := regexp.MustCompile(`Generation:\s*([\d\.]+)\s*t/s`)
+	if m := genRe.FindStringSubmatch(output); len(m) > 1 {
+		genSpeed, _ = strconv.ParseFloat(m[1], 64)
+	}
+
+	// Approximate token counts
+	promptTokens := len(strings.Fields(cfg.Prompt)) * 4 / 3
+	genTokens := cfg.PredictTokens
+	if genTokens <= 0 {
+		genTokens = 64
+	}
+
+	var genDur time.Duration
+	if genSpeed > 0 {
+		genDur = time.Duration(float64(genTokens)/genSpeed*1000) * time.Millisecond
+	} else {
+		genDur = totalDur * 3 / 4
+	}
+	promptDur := totalDur - genDur
+	if promptDur < 0 {
+		promptDur = 10 * time.Millisecond
+	}
+
+	metrics := pm.Stop(promptTokens, genTokens, promptDur, genDur)
+	if promptSpeed > 0 {
+		metrics.PromptSpeed = promptSpeed
+	}
+	if genSpeed > 0 {
+		metrics.GenSpeed = genSpeed
+	}
+
+	return &metrics, nil
 }
 
 // ServerProcess manages the background llama-server instance.

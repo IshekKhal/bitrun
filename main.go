@@ -10,10 +10,12 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"bitrun/pkg/engine"
 	"bitrun/pkg/hardware"
 	"bitrun/pkg/models"
+	"bitrun/pkg/telemetry"
 )
 
 const version = "0.1.0-alpha"
@@ -24,13 +26,14 @@ func printUsage() {
 	fmt.Println("  bitrun <command> [arguments]")
 	fmt.Println()
 	fmt.Println("Commands:")
-	fmt.Println("  run <model>            Run an interactive chat session with a 1-bit model")
-	fmt.Println("  pull <model>           Download model weights to local storage")
-	fmt.Println("  list                   List downloaded models and custom personas")
-	fmt.Println("  create <name> -f <file> Create a custom model persona from a Modelfile")
-	fmt.Println("  serve <model>          Start local OpenAI-compatible HTTP API server")
-	fmt.Println("  hardware               Display host CPU vector capabilities and thread tuning")
-	fmt.Println("  version                Print BitRun version")
+	fmt.Println("  run <model> [prompt] [--power]  Run an interactive chat or prompt with energy telemetry")
+	fmt.Println("  bench <model> [--tokens N]      Benchmark prompt processing, speed, and power consumption")
+	fmt.Println("  pull <model>                    Download model weights to local storage")
+	fmt.Println("  list                            List downloaded models and custom personas")
+	fmt.Println("  create <name> -f <file>         Create a custom model persona from a Modelfile")
+	fmt.Println("  serve <model>                   Start local OpenAI-compatible HTTP API server")
+	fmt.Println("  hardware                        Display host CPU vector capabilities and thread tuning")
+	fmt.Println("  version                         Print BitRun version")
 	fmt.Println("\nAvailable base model tags:")
 	for tag, def := range models.Catalog {
 		fmt.Printf("  %-14s %s (~%d MB)\n", tag, def.Description, def.SizeMB)
@@ -151,7 +154,7 @@ func main() {
 		// Validate base model exists in Catalog or as direct file
 		if _, ok := models.Catalog[manifest.BaseModel]; !ok {
 			if _, err := os.Stat(manifest.BaseModel); os.IsNotExist(err) {
-				fmt.Fprintf(os.Stderr, "[bitrun] Unknown base model '%s' in %s.\nAvailable models: bitnet-70m, falcon3-1b, bitnet-2b, falcon3-3b\n", manifest.BaseModel, modelfilePath)
+				fmt.Fprintf(os.Stderr, "[bitrun] Unknown base model '%s' in %s.\nAvailable models: bitnet-70m, falcon3-1b, bitnet-2b, falcon3-3b, bonsai-8b, bonsai-1.7b\n", manifest.BaseModel, modelfilePath)
 				os.Exit(1)
 			}
 		}
@@ -248,15 +251,118 @@ func main() {
 			fmt.Printf("[bitrun] Loading %s on %d CPU threads...\n", def.Name, cfg.Threads)
 		}
 
-		if len(os.Args) > 3 {
-			cfg.Prompt = strings.Join(os.Args[3:], " ")
+		enablePower := false
+		var cleanPromptArgs []string
+		for _, arg := range os.Args[3:] {
+			if arg == "--power" || arg == "-w" {
+				enablePower = true
+			} else {
+				cleanPromptArgs = append(cleanPromptArgs, arg)
+			}
+		}
+
+		var pm *telemetry.PowerMonitor
+		if enablePower {
+			pm = telemetry.NewPowerMonitor(cfg.Threads)
+			pm.Start()
+		}
+
+		if len(cleanPromptArgs) > 0 {
+			cfg.Prompt = strings.Join(cleanPromptArgs, " ")
+			startTime := time.Now()
 			if err := engine.RunOneShot(ctx, cfg, os.Stdout); err != nil {
 				fmt.Fprintf(os.Stderr, "[bitrun] Session error: %v\n", err)
+			}
+			if enablePower && pm != nil {
+				promptTokens := len(strings.Fields(cfg.Prompt)) * 4 / 3
+				genDur := time.Since(startTime)
+				metrics := pm.Stop(promptTokens, 64, 20*time.Millisecond, genDur)
+				fmt.Print(telemetry.FormatTelemetryBox(metrics))
 			}
 		} else {
 			if err := engine.RunInteractive(ctx, cfg); err != nil {
 				fmt.Fprintf(os.Stderr, "[bitrun] Session error: %v\n", err)
 			}
+			if enablePower && pm != nil {
+				metrics := pm.Stop(0, 0, 0, 0)
+				fmt.Print(telemetry.FormatTelemetryBox(metrics))
+			}
+		}
+
+	case "bench":
+		if len(os.Args) < 3 {
+			fmt.Fprintln(os.Stderr, "Usage: bitrun bench <model-tag-or-name> [--tokens 64] [--threads N] [--prompt \"...\"]")
+			os.Exit(1)
+		}
+		tag := os.Args[2]
+		modelPath, def, manifest, err := resolveModel(tag)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[bitrun] %v\n", err)
+			os.Exit(1)
+		}
+
+		if _, statErr := os.Stat(modelPath); os.IsNotExist(statErr) {
+			if def.Tag != "" && def.RemoteFilename != "" {
+				fmt.Printf("[bitrun] Base model '%s' not found locally. Initiating download...\n", def.Tag)
+				_, err = models.DownloadModel(def, models.GetModelsDir())
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "[bitrun] Download failed: %v\n", err)
+					os.Exit(1)
+				}
+			} else {
+				fmt.Fprintf(os.Stderr, "[bitrun] Model file not found: %s\n", modelPath)
+				os.Exit(1)
+			}
+		}
+
+		engineBin := locateEngineBinary("llama-cli")
+		if engineBin == "" {
+			fmt.Fprintln(os.Stderr, "[bitrun] Error: Native engine 'llama-cli' not found.")
+			os.Exit(1)
+		}
+
+		cfg := engine.DefaultConfig(engineBin, modelPath)
+		if def.ContextSize > 0 {
+			cfg.ContextSize = def.ContextSize
+		}
+		cfg.PredictTokens = 64
+		cfg.Prompt = "The architectural breakthrough of 1-bit ternary neural networks is that weights are constrained to minus one, zero, and plus one. This allows matrix multiplications to be replaced by simple additions and subtractions. Explain why this fundamentally changes CPU inference efficiency."
+
+		for i := 3; i < len(os.Args); i++ {
+			arg := os.Args[i]
+			if (arg == "--tokens" || arg == "-n") && i+1 < len(os.Args) {
+				if n, err := strconv.Atoi(os.Args[i+1]); err == nil && n > 0 {
+					cfg.PredictTokens = n
+					i++
+				}
+			} else if (arg == "--threads" || arg == "-t") && i+1 < len(os.Args) {
+				if t, err := strconv.Atoi(os.Args[i+1]); err == nil && t > 0 {
+					cfg.Threads = t
+					i++
+				}
+			} else if (arg == "--prompt" || arg == "-p") && i+1 < len(os.Args) {
+				cfg.Prompt = os.Args[i+1]
+				i++
+			}
+		}
+
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+
+		displayName := def.Name
+		if manifest != nil {
+			displayName = fmt.Sprintf("%s (persona: %s)", def.Name, manifest.Name)
+		}
+		fmt.Printf("[bitrun] Benchmarking %s (%d tokens, %d CPU threads)...\n\n", displayName, cfg.PredictTokens, cfg.Threads)
+
+		metrics, err := engine.RunBenchmark(ctx, cfg, os.Stdout)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "\n[bitrun] Benchmark error: %v\n", err)
+			os.Exit(1)
+		}
+
+		if metrics != nil {
+			fmt.Print(telemetry.FormatTelemetryBox(*metrics))
 		}
 
 	case "serve":

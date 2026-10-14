@@ -1,0 +1,42 @@
+From d0c373dc26f9151885c14330c0f2e22fb7776343 Mon Sep 17 00:00:00 2001
+From: Abhishek Khanra <ishekofficial@gmail.com>
+Date: Mon, 12 Oct 2026 18:53:13 +0530
+Subject: [PATCH] fix(cmake): enable MSVC compiler support and build tools
+ targets for Windows
+
+---
+ CMakeLists.txt     | 2 ++
+ src/CMakeLists.txt | 6 +++---
+ 2 files changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 5c8382e..ef7a0bb 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -39,6 +39,8 @@ endif()
+ find_package(Threads REQUIRED)
+ 
+ add_subdirectory(src)
++set(LLAMA_BUILD_COMMON ON CACHE BOOL "Build llama.cpp common library" FORCE)
++set(LLAMA_BUILD_TOOLS  ON CACHE BOOL "Build llama.cpp tools" FORCE)
+ set(LLAMA_BUILD_SERVER ON CACHE BOOL "Build llama.cpp server" FORCE)
+ add_subdirectory(3rdparty/llama.cpp)
+ 
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index bac8459..0814b40 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -4,7 +4,7 @@ set(GGML_SOURCES_BITNET ggml-bitnet-lut.cpp)
+ 
+ include_directories(3rdparty/llama.cpp/ggml/include)
+ 
+-if (NOT (CMAKE_C_COMPILER_ID MATCHES "Clang" OR CMAKE_C_COMPILER_ID STREQUAL "GNU") OR
+-    NOT (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU"))
+-    message(FATAL_ERROR "Clang or GCC is required for Bitnet.cpp compilation")
++if (NOT (CMAKE_C_COMPILER_ID MATCHES "Clang" OR CMAKE_C_COMPILER_ID STREQUAL "GNU" OR CMAKE_C_COMPILER_ID STREQUAL "MSVC") OR
++    NOT (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"))
++    message(FATAL_ERROR "Clang, GCC, or MSVC is required for Bitnet.cpp compilation")
+ endif()
+-- 
+2.55.0
+

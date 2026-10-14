@@ -89,11 +89,46 @@ bitrun run falcon3-1b
 # Run a one-shot prompt directly
 bitrun run falcon3-1b "Explain RAII in C++"
 
+# Run with real-time power telemetry (Watts, Joules, Joules/token)
+bitrun run bitnet-2b "Explain quantum tunneling" --power
+
+# Benchmark generation speed, latency, and power consumption
+bitrun bench bitnet-2b --tokens 64
+
 # Create a custom model persona from a Modelfile
 bitrun create gopher -f Modelfile
 
 # Serve OpenAI-compatible REST API on port 11435 (avoids Ollama 11434 conflict)
 bitrun serve falcon3-1b
+```
+
+---
+
+## Energy & Power Telemetry (`--power` & `bitrun bench`)
+
+Ternary 1-bit models shine in energy efficiency—running on 8–15W laptop and mini-PC CPUs rather than 250W–400W GPUs. BitRun includes built-in hardware power monitoring across macOS (Apple Silicon SmartBattery / SoC energy profiling), Linux (Intel/AMD RAPL microjoules), and Windows:
+
+```bash
+# Interactive run with energy monitoring
+bitrun run bitnet-2b --power
+
+# Run a synthetic benchmark
+bitrun bench bitnet-2b --tokens 64 --threads 8
+```
+
+Example telemetry output:
+```text
+┌────────────────────────────────────────────────────────┐
+│               BitRun Performance & Power               │
+├───────────────────────┬────────────────────────────────┤
+│ Prompt Evaluation     │ 83.3 tokens/sec (12 tokens)    │
+│ Token Generation      │ 49.3 tokens/sec (64 tokens)    │
+│ Time to First Token   │ 144 ms                         │
+│ Average Power         │ 6.84 W                         │
+│ Total Energy Consumed │ 8.89 Joules                    │
+│ Energy Efficiency     │ 0.1389 Joules/token            │
+│ Battery Drain Delta   │ 0.00%                          │
+└───────────────────────┴────────────────────────────────┘
 ```
 
 ---
@@ -150,14 +185,36 @@ curl -s http://127.0.0.1:11435/v1/chat/completions \
 | `falcon3-1b` | 1B | `i2_s` Ternary | ~1.30 GB | 4,096 | TII Falcon3 1B Instruct conversational model |
 | `bitnet-2b` | 2.4B | `i2_s` Ternary | ~1.13 GB | 2,048 | Official Microsoft BitNet b1.58 2B4T ternary model |
 | `falcon3-3b` | 3B | `i2_s` Ternary | ~2.80 GB | 4,096 | TII Falcon3 3B Instruct conversational model |
+| `bonsai-8b` | 8B | `i2_s` Ternary | ~2.08 GB | 4,096 | PrismML Bonsai 8B 1.58-bit model based on Qwen |
+| `bonsai-1.7b` | 1.7B | `i2_s` Ternary | ~236 MB | 2,048 | PrismML Bonsai 1.7B compact 1.58-bit model |
 | `bitnet-70m` | 70M | `Q8_0` | ~79 MB | 768 | Ultra-compact smoke test model |
+
+---
+
+## Upstream Kernel Patches & Engine Fixes
+
+BitRun actively maintains and contributes low-level C++ fixes back to upstream `microsoft/BitNet`:
+
+1. **ARM64 Block-Interleaved Weight Unpacking (51M Perplexity Resolution)**:
+   - In GGUF `I2_S` format, weights are stored block-interleaved (32 bytes per 128 activations). Sequential unpacking caused severe matrix permutation and 51,732,149 perplexity on `wiki.test.raw`.
+   - BitRun incorporates Scott Guyton's ARM NEON dot-product kernel (`vdotq_s32`) and 32-stride interleaved scalar fallback, bringing perplexity down to **18.84** (matching Hugging Face's 18.79 baseline) and achieving 49.3 t/s generation.
+2. **CMake Submodule Auto-Patching**:
+   - Automated CMake detection and patch application in `CMakeLists.txt` via `git apply --check` so developers building from source don't get unpatched submodule builds.
+3. **MAD Kernel Batch Stride Fix**:
+   - Fixed output pointer overwrites (`s[(row + rb) * bs]`) across `1x1`, `1x4`, and `1xN` kernels, preventing multi-row matrix evaluation memory corruption.
+4. **Squared ReLU FFN Activation**:
+   - Corrected model activation from SiLU to `LLM_FFN_RELU_SQR` matching Microsoft's 2.4B pre-training checkpoint.
+5. **BLAS Context Safety & Tensor Alignment**:
+   - Guarded `I2_S` tensors from BLAS crashes on context lengths $\ge 32$ tokens, and aligned `ggml_row_size()` to `ne / 4`.
+
+All source patches and modified kernels are versioned and tracked directly in the [`patches/`](patches/) directory.
 
 ---
 
 ## Architecture Overview
 
 BitRun uses a **decoupled supervisor-engine design**:
-* **Supervisor Layer (Go)**: Cross-platform CLI, CPU topology detection, content-addressed asset store (`~/.bitrun`), and HTTP REST supervisor.
+* **Supervisor Layer (Go)**: Cross-platform CLI, CPU topology detection, content-addressed asset store (`~/.bitrun`), power telemetry, and HTTP REST supervisor.
 * **Engine Tier (Native C++)**: Statically compiled binary utilizing ARM NEON with dot-product (`ARM_FEATURE_DOTPROD`) and x86 AVX-512 kernels. Zero CGO dependencies, ensuring total crash isolation.
 
 ---
@@ -169,7 +226,7 @@ BitRun stands on the shoulders of giants:
 * **[BitNet.cpp](https://github.com/microsoft/BitNet)** by Microsoft Research (MIT License) — Groundbreaking 1-bit and 1.58-bit ternary matrix kernels.
 
 BitRun contributes back to upstream:
-* **[microsoft/BitNet#642](https://github.com/microsoft/BitNet/pull/642)** — ARM64 2B batch stride, FFN activation, and LLaMA-3 tokenizer inference fix.
+* **[microsoft/BitNet#642](https://github.com/microsoft/BitNet/pull/642)** — ARM64 2.4B batch stride write-backs, interleaved I2_S weight layout unpacking, squared ReLU activation, and CMake submodule auto-patching (bringing greedy perplexity to 18.84 on wiki.test.raw, matching reference).
 * **[microsoft/BitNet#644](https://github.com/microsoft/BitNet/pull/644)** — Native MSVC compiler support and CLI build tools on Windows.
 
 BitRun wraps these core engines with cross-platform zero-compile distribution, model management, Modelfile custom personas, and an OpenAI-compatible REST server.
