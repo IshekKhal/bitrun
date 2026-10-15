@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -121,6 +122,16 @@ func (pm *PowerMonitor) sampleLoop() {
 			pm.mu.Unlock()
 		}
 	}
+}
+
+// GetInstantWatts queries instantaneous wattage from platform telemetry.
+func (pm *PowerMonitor) GetInstantWatts() float64 {
+	return pm.readInstantWatts()
+}
+
+// GetDataSource returns the identified hardware counter or telemetry source.
+func (pm *PowerMonitor) GetDataSource() string {
+	return pm.dataSource
 }
 
 // readInstantWatts queries real-time wattage from the platform.
@@ -352,4 +363,60 @@ func truncate(s string, maxLen int) string {
 		return s[:maxLen-3] + "..."
 	}
 	return s
+}
+
+// BatteryInfo holds real-time battery and power source details.
+type BatteryInfo struct {
+	Percentage    float64
+	OnBattery     bool
+	State         string // "AC Attached", "Discharging", "Charging"
+	TimeRemaining string
+}
+
+// GetBatteryInfo queries instantaneous battery and power source status.
+func GetBatteryInfo() BatteryInfo {
+	info := BatteryInfo{
+		Percentage: 100.0,
+		State:      "AC Attached",
+	}
+
+	if runtime.GOOS == "darwin" {
+		out, err := exec.Command("pmset", "-g", "batt").Output()
+		if err == nil {
+			text := string(out)
+			if strings.Contains(text, "Battery Power") {
+				info.OnBattery = true
+				info.State = "Discharging"
+			} else {
+				info.State = "AC Attached"
+			}
+
+			// Parse percentage: e.g. 80%
+			rePct := regexp.MustCompile(`(\d+)%`)
+			if m := rePct.FindStringSubmatch(text); len(m) > 1 {
+				if val, err := strconv.ParseFloat(m[1], 64); err == nil {
+					info.Percentage = val
+				}
+			}
+
+			// Parse remaining time: e.g. 7:32 remaining
+			reTime := regexp.MustCompile(`(\d+:\d+)\s+remaining`)
+			if m := reTime.FindStringSubmatch(text); len(m) > 1 {
+				info.TimeRemaining = m[1]
+			}
+		}
+	} else if runtime.GOOS == "linux" {
+		matches, _ := filepath.Glob("/sys/class/power_supply/BAT*/capacity")
+		if len(matches) > 0 {
+			if val, err := os.ReadFile(matches[0]); err == nil {
+				if pct, err := strconv.ParseFloat(strings.TrimSpace(string(val)), 64); err == nil {
+					info.Percentage = pct
+					info.OnBattery = true
+					info.State = "Discharging"
+				}
+			}
+		}
+	}
+
+	return info
 }

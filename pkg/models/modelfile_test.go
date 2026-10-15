@@ -94,8 +94,13 @@ PARAMETER temperature 0.5
 func TestSaveAndLoadManifest(t *testing.T) {
 	tmpDir := t.TempDir()
 	origHome := os.Getenv("HOME")
+	origProfile := os.Getenv("USERPROFILE")
 	t.Setenv("HOME", tmpDir)
-	defer t.Setenv("HOME", origHome)
+	t.Setenv("USERPROFILE", tmpDir)
+	defer func() {
+		t.Setenv("HOME", origHome)
+		t.Setenv("USERPROFILE", origProfile)
+	}()
 
 	m := &Manifest{
 		Name:         "test-gopher",

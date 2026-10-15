@@ -1,10 +1,10 @@
-# BitRun — Windows Packaging Script (PowerShell)
-# Produces dist/bitrun-0.1.1-alpha-windows-amd64.zip
+# BitRun - Windows Packaging Script (PowerShell)
+# Produces dist/bitrun-0.2.0-beta-windows-amd64.zip
 
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Resolve-Path "$PSScriptRoot\.."
 
-$Version = "0.1.1-alpha"
+$Version = "0.2.0-beta"
 $PackageName = "bitrun-$Version-windows-amd64"
 $DistDir = Join-Path $ProjectRoot "dist"
 $StagingDir = Join-Path $DistDir $PackageName

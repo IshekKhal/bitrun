@@ -1,59 +1,80 @@
 # BitRun ⚡️
 
-> **Zero-compile, self-contained standalone runner and model manager for Microsoft BitNet b1.58 and 1.58-bit ternary LLMs on macOS, Windows, and Linux CPUs.**
+> **Zero-compile runner, model manager, and live terminal dashboard for 1-bit and 1.58-bit ternary LLMs on Apple Silicon and x86_64 CPUs.**
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v0.1.1--alpha-green.svg)](https://github.com/IshekKhal/bitrun/releases)
+[![Release](https://img.shields.io/badge/release-v0.2.0--beta-green.svg)](https://github.com/IshekKhal/bitrun/releases)
 [![Architecture](https://img.shields.io/badge/arch-Apple%20Silicon%20%7C%20x86__64-orange.svg)](#)
 
 ---
 
 ## Why BitRun?
 
-Microsoft's **BitNet b1.58** proved that ternary (1-bit / 1.58-bit) models can run at extreme speeds on commodity CPUs with 70–80% lower energy consumption by eliminating floating-point multiplications. 
+Microsoft's **BitNet b1.58** demonstrated that ternary (1-bit / 1.58-bit) language models can run at high speed on commodity CPUs with 70–80% lower energy consumption by replacing floating-point multiplications with integer additions. 
 
-Ternary models are engineered for **local CPU inference, battery-powered laptops, edge devices, and embedded tasks** where running heavy FP16 or INT4 models drains battery or requires dedicated GPUs.
+Ternary weights (`{-1, 0, +1}`) are engineered for **local CPU inference, battery-powered laptops, and edge devices** where running standard FP16 or INT4 models drains battery or demands an expensive GPU.
 
-However, testing `BitNet.cpp` today requires:
-* Cloning recursive submodules and managing C++ compilers, CMake, and Python toolchains.
-* Manually tuning CPU vector instruction flags (AVX2, AVX-512, ARM NEON).
-* Dealing with 5–10 GB heavy Docker images that defeat the purpose of low-power computing.
+However, testing research implementations directly often requires:
+* Cloning recursive C++ submodules and managing compiler toolchains, CMake, or virtual environments.
+* Manually configuring CPU vector instruction flags (AVX2, AVX-512, ARM NEON).
+* Dealing with multi-gigabyte Docker images that defeat the point of low-power computing.
+* Debugging memory stride crashes and unhandled tensor formats on commodity hardware.
 
-**BitRun solves this by packaging the native inference engine into a self-contained runner with zero external dependencies and a familiar developer experience:** 
+**BitRun packages the native inference engine into a standalone runner with zero external dependencies and a clean developer workflow:**
 
 ```bash
 # 1. Pull a 1-bit model directly from Hugging Face
-bitrun pull bitnet-2b
+bitrun pull falcon3-1b
 
-# 2. Run an interactive chat session on your CPU
-bitrun run bitnet-2b
+# 2. Launch the BitRun Cockpit full-screen dashboard
+bitrun cockpit falcon3-1b
 
 # 3. Or spin up a local OpenAI-compatible REST server
-bitrun serve bitnet-2b
+bitrun serve falcon3-1b
 ```
 
 ---
 
-## Performance Benchmarks
+## The BitRun Cockpit
 
-### 1. Apple Silicon (M4 Pro CPU, 12 Cores, Pure CPU SIMD `-ngl 0`)
-| Model | Size | Prompt Speed | Generation Speed | Memory (RAM) | GPU Utilization |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Falcon3 1B Instruct** (`falcon3-1b`) | **1.30 GB** | **137–142 t/s** | **98–127 t/s** | **~1.9 GB** | **0% (Pure CPU SIMD)** |
-| **BitNet b1.58 2.4B** (`bitnet-2b`) | **1.13 GB** | **60.1 t/s** | **39.8 t/s** | **~1.8 GB** | **0% (Pure CPU SIMD)** |
-| **BitNet 70M** (`bitnet-70m`) | **79 MB** | **8,758 t/s** | **1,355 t/s** | **< 150 MB** | **0% (Pure CPU SIMD)** |
+BitRun v0.2.0-beta includes **Cockpit**, an interactive full-screen terminal interface built with Go and Bubble Tea:
 
-### 2. Windows x86_64 (Intel Core i5-12600K CPU, 16 Threads, AVX2 SIMD)
-| Model | Size | Prompt Speed | Generation Speed | Memory (RAM) | GPU Utilization |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Falcon3 1B Instruct** (`falcon3-1b`) | **1.30 GB** | **209.6 t/s** | **39–45 t/s** | **~1.9 GB** | **0% (Pure CPU AVX2)** |
-| **BitNet 70M** (`bitnet-70m`) | **79 MB** | **2,419 t/s** | **492 t/s** | **< 150 MB** | **0% (Pure CPU AVX2)** |
+```text
+ ◆ BitRun Cockpit • model: bonsai-1.7b • quant: PrismML Q1_0 • port: 11435       ⚡ Pure CPU SIMD (-ngl 0) 
+╭────────────────────────────────────────────────────────╮╭────────────────────────────────────────────╮
+│❯ User 12:11:37                                         ││ LIVE HARDWARE TELEMETRY                    │
+│Explain how 1-bit models run on commodity CPUs.         ││ Gen Speed     : 73.7 tok/s (peak: 77.9)    │
+│                                                        ││ Prompt Speed  : 433.5 tok/s                │
+│◆ BitRun 12:11:37                                       ││ Prompt TTFT   : 138 ms                     │
+│Ternary models constrain weight values to {-1, 0, +1}.  ││ Context       : 124/4096 (3%)              │
+│This transforms matrix multiplication from floating-    ││                 [■□□□□□□□□□□□□□□□]         │
+│point math into simple integer additions and            ││ P-Cores ( 8)  : [■■■■■■■■■□□□] 75%         │
+│subtractions. Because weights take only 1.58 bits,      ││ E-Cores ( 4)  : [■□□□□□□□□□□□] 11%         │
+│memory bandwidth drops by roughly 10x, allowing laptops ││ RAM Available : 24.0 GB (Host)             │
+│to run inference at high speed while drawing minimal    ││ SIMD Engine   : ARM NEON DotProd (Native)  │
+│power...                                                ││                                            │
+│                                                        │╰────────────────────────────────────────────╯
+│                                                        │╭────────────────────────────────────────────╮
+│                                                        ││ POWER & ENERGY TELEMETRY                   │
+│                                                        ││ Package Power : 11.7 W  [■■■□□□□□□□□□]     │
+│                                                        ││ Energy/Token  : 0.1587 Joules              │
+│                                                        ││ Efficiency    : 6.3 tokens/Joule           │
+│                                                        ││ Session Energy: 216.125 mWh (778.0 J)      │
+│                                                        ││ Power Source  : AC Attached                │
+│                                                        ││ Battery Draw  : 0.0 W (AC Powered)         │
+│                                                        ││ REST Endpoint : http://127.0.0.1:11435     │
+│                                                        ││ Status        : [READY]                    │
+│                                                        │╰────────────────────────────────────────────╯
+╰────────────────────────────────────────────────────────╯                                             
+ [Enter] Send Prompt • [↑/↓/PgUp/PgDn] Scroll Chat • [Ctrl+L] Clear Screen • [Esc/Ctrl+C] Quit Cockpit  
+```
 
-### 3. Linux x86_64 (WSL2 / Ubuntu, 4 Cores, AVX2 SIMD)
-| Model | Size | Prompt Speed | Generation Speed | Memory (RAM) | GPU Utilization |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Falcon3 1B Instruct** (`falcon3-1b`) | **1.30 GB** | **~130 t/s** | **40–45 t/s** | **~1.9 GB** | **0% (Pure CPU AVX2)** |
-| **BitNet 70M** (`bitnet-70m`) | **79 MB** | **~2,100 t/s** | **~450 t/s** | **< 150 MB** | **0% (Pure CPU AVX2)** |
+### Cockpit Capabilities
+* **Dual-Pane Layout**: The left viewport maintains multi-turn conversation history with independent keyboard and mouse wheel scrolling.
+* **Real-Time Streaming**: Tokens stream character-by-character via server-sent events (`/v1/chat/completions`) with an active cursor indicator.
+* **Live Hardware Telemetry**: Samples prompt time-to-first-token (TTFT), instantaneous and peak generation speed, and P-core vs E-core utilization.
+* **Energy Gauges**: Tracks package power in Watts, energy efficiency in Joules per token, cumulative milliwatt-hours consumed, and estimated battery runtime.
+* **Clean Terminal Buffer**: Background inference engine logs redirect to `~/.bitrun/engine.log`, keeping the terminal display free of coordinate corruption.
 
 ---
 
@@ -71,62 +92,106 @@ curl -fsSL https://raw.githubusercontent.com/IshekKhal/bitrun/main/install.sh | 
 irm https://raw.githubusercontent.com/IshekKhal/bitrun/main/install.ps1 | iex
 ```
 
-### 2. Available Commands
+Pre-compiled standalone archives are also available on the [Releases](https://github.com/IshekKhal/bitrun/releases) page for offline setup.
+
+### 2. Basic Workflow
 
 ```bash
-# Display CPU topology and vector instruction support
+# Verify system topology and SIMD extensions
 bitrun hardware
 
-# List all downloaded models and custom personas
-bitrun list
+# Download a model from the registry
+bitrun pull bonsai-1.7b
 
-# Download a model with dynamic progress and resume support
-bitrun pull falcon3-1b
+# Launch interactive Cockpit interface
+bitrun cockpit bonsai-1.7b
 
-# Run interactive terminal chat
-bitrun run falcon3-1b
+# Or run a standard interactive terminal session
+bitrun run bonsai-1.7b
 
-# Run a one-shot prompt directly
-bitrun run falcon3-1b "Explain RAII in C++"
-
-# Run with real-time power telemetry (Watts, Joules, Joules/token)
-bitrun run bitnet-2b "Explain quantum tunneling" --power
-
-# Benchmark generation speed, latency, and power consumption
-bitrun bench bitnet-2b --tokens 64
-
-# Create a custom model persona from a Modelfile
-bitrun create gopher -f Modelfile
-
-# Serve OpenAI-compatible REST API on port 11435 (avoids Ollama 11434 conflict)
-bitrun serve falcon3-1b
+# Run a one-shot query directly
+bitrun run bonsai-1.7b "Summarize the advantages of ternary weight quantization."
 ```
 
 ---
 
-## Energy & Power Telemetry (`--power` & `bitrun bench`)
+## Supported Model Catalog
 
-Ternary 1-bit models shine in energy efficiency—running on 8–15W laptop and mini-PC CPUs rather than 250W–400W GPUs. BitRun includes built-in hardware power monitoring across macOS (Apple Silicon SmartBattery / SoC energy profiling), Linux (Intel/AMD RAPL microjoules), and Windows:
+BitRun includes pre-configured registries for 6 ternary and compact models:
+
+| Model Tag | Parameters | Quant Format | Download Size | Context Window | Best Suited For |
+| :---: | :---: | :---: | :---: | :---: | :---: |
+| **`bitnet-70m`** | 70 Million | `Q8_0` | 79 MB | 768 tokens | Micro smoke testing, pipeline verification, low-latency health checks. |
+| **`bonsai-1.7b`**| 1.7 Billion | Group-128 `Q1_0` | 237 MB | 2,048 tokens | Fast instruction chat on battery (73 tok/s on Apple Silicon, 86 tok/s on Windows AVX2). |
+| **`falcon3-1b`** | 1.0 Billion | Packed 2-bit `I2_S` | 1.30 GB | 4,096 tokens | TII Falcon3 instruction follower with low memory footprint. |
+| **`bitnet-2b`**  | 2.4 Billion | Packed 2-bit `I2_S` | 1.13 GB | 2,048 tokens | Official Microsoft BitNet b1.58 2B4T foundation model with squared ReLU. |
+| **`falcon3-3b`** | 3.0 Billion | Packed 2-bit `I2_S` | 2.07 GB | 4,096 tokens | Multi-step reasoning and coding tasks on commodity CPUs. |
+| **`bonsai-8b`**  | 8.0 Billion | Group-128 `PQ2_0` | 2.08 GB | 8,192 tokens | High-parameter instruction chat on CPU (21.0 tok/s on Apple Silicon). |
+
+---
+
+## Verified Hardware Benchmarks
+
+The figures below reflect physical hardware runs using native binaries with pure CPU SIMD execution (`--tokens 64`). Zero GPU offloading (`-ngl 0`).
+
+### 1. Apple Silicon (M4 Pro CPU, 12 Cores: 8P + 4E, 24 GB Unified RAM)
+| Model Tag | Size | Prompt Speed | Generation Speed | TTFT | Package Power | Energy / Token |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **`bitnet-70m`** | 79 MB | **11,549.2 t/s** | **1,619.8 t/s** | 78 ms | 11.70 W | 0.043 J/tok |
+| **`bonsai-1.7b`**| 237 MB | **411.7 t/s** | **72.8 t/s** | 576 ms | 11.70 W | 0.316 J/tok |
+| **`falcon3-1b`** | 1.30 GB | **170.8 t/s** | **73.2 t/s** | 628 ms | 11.70 W | 0.345 J/tok |
+| **`bitnet-2b`**  | 1.13 GB | **94.4 t/s** | **31.6 t/s** | 881 ms | 11.70 W | 0.484 J/tok |
+| **`falcon3-3b`** | 2.07 GB | **80.6 t/s** | **33.1 t/s** | 1.08 s | 11.70 W | 0.592 J/tok |
+| **`bonsai-8b`**  | 2.08 GB | **30.1 t/s** | **21.0 t/s** | 1.62 s | 11.70 W | 0.886 J/tok |
+
+### 2. Windows 10 Native (Intel Core i5-12600K, 16 Threads, 32 GB RAM, MSVC AVX2)
+| Model Tag | Size | Prompt Speed | Generation Speed | TTFT | Package Power | Energy / Token |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **`bitnet-70m`** | 79 MB | **1,766.2 t/s** | **597.8 t/s** | 595 ms | 22.60 W | 0.038 J/tok |
+| **`bonsai-1.7b`**| 237 MB | **152.4 t/s** | **85.6 t/s** | 1.42 s | 22.60 W | 0.264 J/tok |
+| **`falcon3-1b`** | 1.30 GB | **14.9 t/s** | **11.1 t/s** | 5.48 s | 22.60 W | 2.036 J/tok |
+| **`bitnet-2b`**  | 1.13 GB | **8.0 t/s** | **6.7 t/s** | 9.67 s | 22.60 W | 3.373 J/tok |
+| **`falcon3-3b`** | 2.07 GB | **7.5 t/s** | **6.0 t/s** | 10.34 s | 22.60 W | 3.766 J/tok |
+| **`bonsai-8b`**  | 2.08 GB | **4.7 t/s** | **4.0 t/s** | 15.38 s | 22.60 W | 5.650 J/tok |
+
+### 3. Linux WSL2 (Intel Core i5-12600K, 4 vCPUs Allocated, GCC 13.3 AVX2)
+| Model Tag | Size | Prompt Speed | Generation Speed | TTFT | Package Power | Energy / Token |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **`bitnet-70m`** | 79 MB | **333.1 t/s** | **134.1 t/s** | 159 ms | 8.50 W | 0.063 J/tok |
+| **`bonsai-1.7b`**| 237 MB | **41.8 t/s** | **16.8 t/s** | 1.27 s | 8.50 W | 0.505 J/tok |
+| **`falcon3-1b`** | 1.30 GB | **16.7 t/s** | **6.7 t/s** | 3.17 s | 8.50 W | 1.261 J/tok |
+| **`bitnet-2b`**  | 1.13 GB | **10.9 t/s** | **4.4 t/s** | 4.86 s | 8.50 W | 1.938 J/tok |
+| **`falcon3-3b`** | 2.07 GB | **8.7 t/s** | **3.5 t/s** | 6.12 s | 8.50 W | 2.439 J/tok |
+| **`bonsai-8b`**  | 2.08 GB | **1.3 t/s** | **0.5 t/s** | 40.30 s | 8.50 W | 16.058 J/tok |
+
+---
+
+## Energy & Telemetry Monitoring
+
+Ternary models run at low electrical power (8W to 22W total package draw) rather than 250W to 400W on dedicated graphics cards. BitRun incorporates hardware telemetry hooks across:
+* **macOS**: Queries Apple Silicon SoC power counters and battery voltage/amperage via `ioreg`.
+* **Linux**: Reads Intel and AMD processor energy directly from RAPL microjoule counters (`/sys/class/powercap/intel-rapl`).
+* **Windows**: Measures CPU package power via Windows Processor Power Management (PPM).
 
 ```bash
-# Interactive run with energy monitoring
-bitrun run bitnet-2b --power
+# Run a prompt with real-time energy telemetry
+bitrun run bonsai-1.7b "Explain quantum key distribution" --power
 
-# Run a synthetic benchmark
-bitrun bench bitnet-2b --tokens 64 --threads 8
+# Run a synthetic benchmark and report Joules/token
+bitrun bench bonsai-1.7b --tokens 64 --threads 8
 ```
 
-Example telemetry output:
+Example terminal telemetry box:
 ```text
 ┌────────────────────────────────────────────────────────┐
 │               BitRun Performance & Power               │
 ├───────────────────────┬────────────────────────────────┤
-│ Prompt Evaluation     │ 83.3 tokens/sec (12 tokens)    │
-│ Token Generation      │ 49.3 tokens/sec (64 tokens)    │
-│ Time to First Token   │ 144 ms                         │
-│ Average Power         │ 6.84 W                         │
-│ Total Energy Consumed │ 8.89 Joules                    │
-│ Energy Efficiency     │ 0.1389 Joules/token            │
+│ Prompt Evaluation     │ 411.7 tokens/sec (12 tokens)   │
+│ Token Generation      │ 72.8 tokens/sec (64 tokens)    │
+│ Time to First Token   │ 576 ms                         │
+│ Average Power         │ 11.70 W                        │
+│ Total Energy Consumed │ 10.28 Joules                   │
+│ Energy Efficiency     │ 0.316 Joules/token             │
 │ Battery Drain Delta   │ 0.00%                          │
 └───────────────────────┴────────────────────────────────┘
 ```
@@ -135,12 +200,12 @@ Example telemetry output:
 
 ## Modelfiles & Custom Personas
 
-Create custom system personas and parameter presets using standard Modelfiles:
+You can define custom personas, temperature presets, and context windows using declarative Modelfiles:
 
 ```dockerfile
 # Modelfile
 FROM falcon3-1b
-SYSTEM You are an expert Go systems engineer. Write dense, production-grade code.
+SYSTEM You are an expert systems engineer. Answer concisely with production-grade code.
 PARAMETER temperature 0.2
 PARAMETER context_size 4096
 ```
@@ -148,88 +213,108 @@ PARAMETER context_size 4096
 Build and run your custom persona:
 
 ```bash
-# Create custom persona
+# Create custom persona manifest
 bitrun create gopher -f Modelfile
 
 # Chat with your persona
 bitrun run gopher
 
-# Or run one-shot completions
-bitrun run gopher "Write a ring buffer implementation"
+# Or launch it directly inside the Cockpit
+bitrun cockpit gopher
 ```
 
 ---
 
-## OpenAI-Compatible API
+## OpenAI-Compatible REST API
 
-When running `bitrun serve`, you can point any OpenAI-compatible tool (Cursor, Continue.dev, Open WebUI, LangChain, Python SDK) to `http://localhost:11435/v1` (port 11435 avoids colliding with default Ollama installations):
+`bitrun serve` starts a background server on port `11435` (avoiding port collisions with Ollama on `11434`):
 
+```bash
+bitrun serve falcon3-1b --port 11435
+```
+
+### Direct HTTP Request
 ```bash
 curl -s http://127.0.0.1:11435/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "bitnet-70m",
+    "model": "falcon3-1b",
     "messages": [
-      {"role": "user", "content": "What is the capital of France?"}
+      {"role": "user", "content": "How do 1-bit models conserve memory bandwidth?"}
     ],
-    "temperature": 0.7
+    "temperature": 0.2
   }'
 ```
 
----
+### Python SDK Example
+```python
+from openai import OpenAI
 
-## Supported Models Catalog
+client = OpenAI(
+    base_url="http://127.0.0.1:11435/v1",
+    api_key="bitrun"  # Any string
+)
 
-| Model Tag | Parameters | Format | Disk Size | Context | Description |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| `falcon3-1b` | 1B | `i2_s` Ternary | ~1.30 GB | 4,096 | TII Falcon3 1B Instruct conversational model |
-| `bitnet-2b` | 2.4B | `i2_s` Ternary | ~1.13 GB | 2,048 | Official Microsoft BitNet b1.58 2B4T ternary model |
-| `falcon3-3b` | 3B | `i2_s` Ternary | ~2.80 GB | 4,096 | TII Falcon3 3B Instruct conversational model |
-| `bonsai-8b` | 8B | `i2_s` Ternary | ~2.08 GB | 4,096 | PrismML Bonsai 8B 1.58-bit model based on Qwen |
-| `bonsai-1.7b` | 1.7B | `i2_s` Ternary | ~236 MB | 2,048 | PrismML Bonsai 1.7B compact 1.58-bit model |
-| `bitnet-70m` | 70M | `Q8_0` | ~79 MB | 768 | Ultra-compact smoke test model |
+response = client.chat.completions.create(
+    model="falcon3-1b",
+    messages=[{"role": "user", "content": "Write a concurrent queue in Go."}],
+    stream=True
+)
 
----
+for chunk in response:
+    content = chunk.choices[0].delta.content
+    if content:
+        print(content, end="", flush=True)
+print()
+```
 
-## Upstream Kernel Patches & Engine Fixes
-
-BitRun actively maintains and contributes low-level C++ fixes back to upstream `microsoft/BitNet`:
-
-1. **ARM64 Block-Interleaved Weight Unpacking (51M Perplexity Resolution)**:
-   - In GGUF `I2_S` format, weights are stored block-interleaved (32 bytes per 128 activations). Sequential unpacking caused severe matrix permutation and 51,732,149 perplexity on `wiki.test.raw`.
-   - BitRun incorporates Scott Guyton's ARM NEON dot-product kernel (`vdotq_s32`) and 32-stride interleaved scalar fallback, bringing perplexity down to **18.84** (matching Hugging Face's 18.79 baseline) and achieving 49.3 t/s generation.
-2. **CMake Submodule Auto-Patching**:
-   - Automated CMake detection and patch application in `CMakeLists.txt` via `git apply --check` so developers building from source don't get unpatched submodule builds.
-3. **MAD Kernel Batch Stride Fix**:
-   - Fixed output pointer overwrites (`s[(row + rb) * bs]`) across `1x1`, `1x4`, and `1xN` kernels, preventing multi-row matrix evaluation memory corruption.
-4. **Squared ReLU FFN Activation**:
-   - Corrected model activation from SiLU to `LLM_FFN_RELU_SQR` matching Microsoft's 2.4B pre-training checkpoint.
-5. **BLAS Context Safety & Tensor Alignment**:
-   - Guarded `I2_S` tensors from BLAS crashes on context lengths $\ge 32$ tokens, and aligned `ggml_row_size()` to `ne / 4`.
-
-All source patches and modified kernels are versioned and tracked directly in the [`patches/`](patches/) directory.
+Connects with Cursor, Continue.dev, Open WebUI, and LangChain by setting the base URL to `http://localhost:11435/v1`.
 
 ---
 
-## Architecture Overview
+## Command Reference
 
-BitRun uses a **decoupled supervisor-engine design**:
-* **Supervisor Layer (Go)**: Cross-platform CLI, CPU topology detection, content-addressed asset store (`~/.bitrun`), power telemetry, and HTTP REST supervisor.
-* **Engine Tier (Native C++)**: Statically compiled binary utilizing ARM NEON with dot-product (`ARM_FEATURE_DOTPROD`) and x86 AVX-512 kernels. Zero CGO dependencies, ensuring total crash isolation.
+| Command | Usage | Description |
+| :---: | :---: | :---: |
+| `bitrun cockpit <model>` | `bitrun cockpit bonsai-1.7b` | Opens the full-screen terminal dashboard with live hardware and energy gauges. |
+| `bitrun run <model> [prompt]`| `bitrun run falcon3-1b` | Starts an interactive chat session or evaluates a single prompt. |
+| `bitrun bench <model>` | `bitrun bench bitnet-2b --tokens 64` | Measures prompt speed, generation throughput, and Joules/token. |
+| `bitrun pull <model>` | `bitrun pull bonsai-8b` | Downloads a model checkpoint from Hugging Face with resume support. |
+| `bitrun serve <model>` | `bitrun serve falcon3-1b --port 11435` | Runs the local OpenAI-compatible REST server daemon. |
+| `bitrun list` | `bitrun list` | Lists downloaded models and custom Modelfile personas. |
+| `bitrun create <name> -f <file>`| `bitrun create gopher -f Modelfile` | Builds a custom persona manifest from a Modelfile. |
+| `bitrun hardware` | `bitrun hardware` | Displays CPU cores, SIMD vector capabilities, and recommended thread allocations. |
+
+---
+
+## Native Engine & Kernel Architecture
+
+BitRun pairs a high-level Go supervisor with statically linked C++ inference binaries:
+* **The Go Supervisor Layer**: Manages CLI argument dispatch, model downloads, Modelfile manifests, hardware telemetry probing, and process supervision.
+* **The Native Engine Tier**: Statically compiled C++ binaries (`llama-cli`, `llama-server`, `llama-quantize`) tracked on the sovereign `bitrun-engine` branch of modern upstream `llama.cpp` (b1395).
+
+### Key Low-Level Engineering Fixes
+1. **Dynamic GGUF Type 42 Remapping (`gguf.cpp`)**:
+   PrismML's next-generation 8B ternary model (`bonsai-8b`) uses Group-128 quantization (`PQ2_0`, type 142), but legacy checkpoints write GGUF tensor type 42. BitRun dynamically remaps these tensors during initialization, eliminating the tensor offset calculation crash and enabling 8B ternary inference on commodity CPUs.
+2. **Packed 2-Bit Memory Safety (`I2_S`)**:
+   Global stride calculations are pinned to `.blck_size = 4` with 32-byte scale tail preservation, resolving the 4x stride overread that previously caused segmentation faults in forward `mul_mat` operations.
+3. **Scott Guyton ARM NEON Kernel (`quants.c`)**:
+   Uses `vdotq_s32` vector instructions to map `{0, 1, 2}` to true signed ternary values `{-1, 0, +1}`, paired with squared ReLU activations (`LLM_FFN_RELU_SQR`).
+4. **x86_64 Fallback Macro Resolution (`arch-fallback.h`)**:
+   Provides clean symbol mappings for generic scalar fallbacks under MSVC and GCC, allowing native builds on Windows and Linux without unresolved external linker errors.
 
 ---
 
 ## Acknowledgements & Open Source Credits
 
-BitRun stands on the shoulders of giants:
-* **[llama.cpp](https://github.com/ggerganov/llama.cpp)** by Georgi Gerganov and the open-source community (MIT License) — The pioneering CPU inference architecture and GGUF specification.
-* **[BitNet.cpp](https://github.com/microsoft/BitNet)** by Microsoft Research (MIT License) — Groundbreaking 1-bit and 1.58-bit ternary matrix kernels.
+BitRun builds upon foundational open-source projects:
+* **[llama.cpp](https://github.com/ggerganov/llama.cpp)** by Georgi Gerganov and contributors (MIT License) — Core CPU inference architecture and GGUF tensor specification.
+* **[BitNet.cpp](https://github.com/microsoft/BitNet)** by Microsoft Research (MIT License) — 1-bit and 1.58-bit ternary matrix research.
+* **[PrismML](https://prismml.com)** — The Bonsai ternary model family and Group-128 quantization designs.
 
-BitRun contributes back to upstream:
-* **[microsoft/BitNet#642](https://github.com/microsoft/BitNet/pull/642)** — ARM64 2.4B batch stride write-backs, interleaved I2_S weight layout unpacking, squared ReLU activation, and CMake submodule auto-patching (bringing greedy perplexity to 18.84 on wiki.test.raw, matching reference).
-* **[microsoft/BitNet#644](https://github.com/microsoft/BitNet/pull/644)** — Native MSVC compiler support and CLI build tools on Windows.
-
-BitRun wraps these core engines with cross-platform zero-compile distribution, model management, Modelfile custom personas, and an OpenAI-compatible REST server.
+Upstream contributions:
+* **[microsoft/BitNet#642](https://github.com/microsoft/BitNet/pull/642)** — ARM64 interleaved weight unpacking, squared ReLU activation, and CMake submodule auto-patching.
+* **[microsoft/BitNet#644](https://github.com/microsoft/BitNet/pull/644)** — Native MSVC compiler support and CLI tool targets on Windows.
 
 ---
 

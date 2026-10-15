@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-VERSION="0.1.1-alpha"
+VERSION="0.2.0-beta"
 OS="darwin"
 ARCH="arm64"
 DIST_DIR="dist"

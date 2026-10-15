@@ -1,12 +1,3 @@
-# Ignore documentation files and personal docs as requested
-docs/
-docs/*
-docs/**/*
-
-# Personal session logs
-progress.md
-memory.md
-
 # Build outputs and native artifacts
 bin/
 build/

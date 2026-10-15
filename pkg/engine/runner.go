@@ -33,6 +33,8 @@ type RunnerConfig struct {
 	Port          int
 	ModelAlias    string
 	EnablePower   bool
+	Quiet         bool
+	LogWriter     io.Writer
 }
 
 // DefaultConfig generates a recommended configuration based on host hardware.
@@ -65,7 +67,6 @@ func RunInteractive(ctx context.Context, cfg *RunnerConfig) error {
 		"--temp", fmt.Sprintf("%.2f", cfg.Temperature),
 		"-ngl", "0",            // Run on CPU for pure 1-bit SIMD execution
 		"--no-op-offload",      // Disable Metal offload attempts on Apple Silicon
-		"-cnv",                 // Conversation / chat mode
 	}
 
 	if cfg.SystemPrompt != "" {
@@ -106,7 +107,6 @@ func RunOneShot(ctx context.Context, cfg *RunnerConfig, out io.Writer) error {
 		"--temp", fmt.Sprintf("%.2f", cfg.Temperature),
 		"-ngl", "0",
 		"--no-op-offload",
-		"-cnv",
 		"-st",
 		"-p", cfg.Prompt,
 	}
@@ -223,6 +223,7 @@ func StartServer(ctx context.Context, cfg *RunnerConfig) (*ServerProcess, error)
 		"-ngl", "0",
 		"--no-op-offload",
 		"-cb", // continuous batching
+		"-np", "1", // single dedicated slot for maximum context size
 	}
 
 	if cfg.ModelAlias != "" {
@@ -231,10 +232,21 @@ func StartServer(ctx context.Context, cfg *RunnerConfig) (*ServerProcess, error)
 	if cfg.ChatTemplate != "" {
 		args = append(args, "--chat-template", cfg.ChatTemplate)
 	}
+	if cfg.Quiet {
+		args = append(args, "--log-disable")
+	}
 
 	cmd := exec.CommandContext(ctx, cfg.EngineBinary, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	if cfg.LogWriter != nil {
+		cmd.Stdout = cfg.LogWriter
+		cmd.Stderr = cfg.LogWriter
+	} else if cfg.Quiet {
+		cmd.Stdout = io.Discard
+		cmd.Stderr = io.Discard
+	} else {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	}
 
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("failed to start server: %w", err)

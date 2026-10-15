@@ -4,7 +4,7 @@ set -e
 # BitRun — One-Line Installer
 # Usage: curl -fsSL https://raw.githubusercontent.com/IshekKhal/bitrun/main/install.sh | sh
 
-VERSION="0.1.1-alpha"
+VERSION="0.2.0-beta"
 INSTALL_DIR="$HOME/.bitrun/bin"
 REPO="IshekKhal/bitrun"
 

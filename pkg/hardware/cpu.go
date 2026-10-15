@@ -17,6 +17,8 @@ type Info struct {
 	HasDotProd  bool
 	HasAVX512   bool
 	HasAVX2     bool
+	PCores      int
+	ECores      int
 }
 
 // Detect gathers hardware capabilities of the current host machine.
@@ -25,6 +27,15 @@ func Detect() *Info {
 		OS:     runtime.GOOS,
 		Arch:   runtime.GOARCH,
 		NumCPU: runtime.NumCPU(),
+	}
+
+	// Default core partitioning
+	if info.NumCPU >= 8 {
+		info.PCores = info.NumCPU * 2 / 3
+		info.ECores = info.NumCPU - info.PCores
+	} else {
+		info.PCores = info.NumCPU
+		info.ECores = 0
 	}
 
 	// Heuristic: default threads = min(8, max(1, NumCPU - 2)) to prevent UI lockup
@@ -75,6 +86,20 @@ func detectDarwin(info *Info) {
 		dotProd := runSysctl("hw.optional.arm.FEAT_DotProd")
 		if dotProd == "1" {
 			info.HasDotProd = true
+		}
+
+		pCores := runSysctl("hw.perflevel0.physicalcpu")
+		if pCores != "" {
+			if n, err := strconv.Atoi(pCores); err == nil && n > 0 {
+				info.PCores = n
+			}
+		}
+
+		eCores := runSysctl("hw.perflevel1.physicalcpu")
+		if eCores != "" {
+			if n, err := strconv.Atoi(eCores); err == nil && n >= 0 {
+				info.ECores = n
+			}
 		}
 	}
 }

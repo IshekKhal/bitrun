@@ -16,9 +16,10 @@ import (
 	"bitrun/pkg/hardware"
 	"bitrun/pkg/models"
 	"bitrun/pkg/telemetry"
+	"bitrun/pkg/ui"
 )
 
-const version = "0.1.1-alpha"
+const version = "0.2.0-beta"
 
 func printUsage() {
 	fmt.Printf("BitRun — The 1-bit LLM Runner (v%s)\n\n", version)
@@ -26,6 +27,7 @@ func printUsage() {
 	fmt.Println("  bitrun <command> [arguments]")
 	fmt.Println()
 	fmt.Println("Commands:")
+	fmt.Println("  cockpit [model]                 Launch two-pane terminal dashboard with real-time power telemetry")
 	fmt.Println("  run <model> [prompt] [--power]  Run an interactive chat or prompt with energy telemetry")
 	fmt.Println("  bench <model> [--tokens N]      Benchmark prompt processing, speed, and power consumption")
 	fmt.Println("  pull <model>                    Download model weights to local storage")
@@ -184,6 +186,85 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "cockpit":
+		modelTag := "bonsai-1.7b"
+		if len(os.Args) >= 3 && !strings.HasPrefix(os.Args[2], "-") {
+			modelTag = os.Args[2]
+		}
+
+		modelPath, def, manifest, err := resolveModel(modelTag)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[bitrun] %v\n", err)
+			os.Exit(1)
+		}
+
+		if _, statErr := os.Stat(modelPath); os.IsNotExist(statErr) {
+			if def.Tag != "" && def.RemoteFilename != "" {
+				fmt.Printf("[bitrun] Base model '%s' not found locally. Initiating download...\n", def.Tag)
+				_, err = models.DownloadModel(def, models.GetModelsDir())
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "[bitrun] Download failed: %v\n", err)
+					os.Exit(1)
+				}
+			} else {
+				fmt.Fprintf(os.Stderr, "[bitrun] Model file not found: %s\n", modelPath)
+				os.Exit(1)
+			}
+		}
+
+		serverBin := locateEngineBinary("llama-server")
+		if serverBin == "" {
+			fmt.Fprintln(os.Stderr, "[bitrun] Error: Native engine 'llama-server' not found.")
+			os.Exit(1)
+		}
+
+		cockpitCfg := ui.CockpitConfig{
+			ModelTag:     modelTag,
+			ModelPath:    modelPath,
+			EngineBinary: serverBin,
+			Host:         "127.0.0.1",
+			Port:         11435,
+			Threads:      hardware.Detect().Threads,
+			ContextSize:  def.ContextSize,
+			Temperature:  0.7,
+		}
+
+		if manifest != nil {
+			cockpitCfg.SystemPrompt = manifest.SystemPrompt
+			if manifest.Template != "" {
+				cockpitCfg.ChatTemplate = manifest.Template
+			}
+			if temp, ok := manifest.Parameters["temperature"].(float64); ok {
+				cockpitCfg.Temperature = temp
+			}
+			if ctx, ok := manifest.Parameters["context_size"].(int); ok {
+				cockpitCfg.ContextSize = ctx
+			}
+			if thr, ok := manifest.Parameters["threads"].(int); ok {
+				cockpitCfg.Threads = thr
+			}
+		}
+
+		for i := 2; i < len(os.Args); i++ {
+			arg := os.Args[i]
+			if (arg == "--port" || arg == "-p") && i+1 < len(os.Args) {
+				if p, err := strconv.Atoi(os.Args[i+1]); err == nil && p > 0 {
+					cockpitCfg.Port = p
+					i++
+				}
+			} else if (arg == "--threads" || arg == "-t") && i+1 < len(os.Args) {
+				if t, err := strconv.Atoi(os.Args[i+1]); err == nil && t > 0 {
+					cockpitCfg.Threads = t
+					i++
+				}
+			}
+		}
+
+		if err := ui.LaunchCockpit(cockpitCfg); err != nil {
+			fmt.Fprintf(os.Stderr, "[bitrun] Cockpit error: %v\n", err)
+			os.Exit(1)
+		}
+
 	case "run":
 		if len(os.Args) < 3 {
 			fmt.Fprintln(os.Stderr, "Usage: bitrun run <model-tag-or-name>")
@@ -240,6 +321,43 @@ func main() {
 			if stop, ok := manifest.Parameters["stop"].(string); ok {
 				cfg.StopTokens = append(cfg.StopTokens, stop)
 			}
+		}
+
+		useCockpit := false
+		for _, arg := range os.Args[2:] {
+			if arg == "--cockpit" {
+				useCockpit = true
+				break
+			}
+		}
+
+		if useCockpit {
+			serverBin := locateEngineBinary("llama-server")
+			if serverBin == "" {
+				fmt.Fprintln(os.Stderr, "[bitrun] Error: Native engine 'llama-server' not found.")
+				os.Exit(1)
+			}
+			cockpitCfg := ui.CockpitConfig{
+				ModelTag:     tag,
+				ModelPath:    modelPath,
+				EngineBinary: serverBin,
+				Host:         "127.0.0.1",
+				Port:         11435,
+				Threads:      cfg.Threads,
+				ContextSize:  cfg.ContextSize,
+				Temperature:  cfg.Temperature,
+			}
+			if manifest != nil {
+				cockpitCfg.SystemPrompt = manifest.SystemPrompt
+				if manifest.Template != "" {
+					cockpitCfg.ChatTemplate = manifest.Template
+				}
+			}
+			if err := ui.LaunchCockpit(cockpitCfg); err != nil {
+				fmt.Fprintf(os.Stderr, "[bitrun] Cockpit error: %v\n", err)
+				os.Exit(1)
+			}
+			return
 		}
 
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -497,8 +615,10 @@ func locateEngineBinary(name string) string {
 	for _, ext := range exts {
 		binName := name + ext
 		candidates := []string{
-			filepath.Join(models.GetBinDir(), binName),
 			filepath.Join(".", "bin", binName),
+			filepath.Join(models.GetBinDir(), binName),
+			filepath.Join("upstream", "llama.cpp", "build", "bin", binName),
+			filepath.Join("upstream", "llama.cpp", "build", "bin", "Release", binName),
 			filepath.Join("upstream", "bitnet", "build", "bin", binName),
 			filepath.Join("upstream", "bitnet", "build", "bin", "Release", binName),
 			filepath.Join("upstream", "bitnet", "build", "bin", "Debug", binName),
